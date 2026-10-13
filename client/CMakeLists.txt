@@ -29,6 +29,8 @@ if(CMAKE_SYSTEM_NAME STREQUAL "Windows")
     src/client/targets.cpp
     src/sig/signature.cpp
     src/capture/record.cpp
+    src/capture/udp_frame.cpp
+    src/client/sink.cpp
     src/hookcore/hookcore.cpp)
   set_target_properties(fc5mp-client PROPERTIES PREFIX "" OUTPUT_NAME "fc5mp-client")
   target_include_directories(fc5mp-client PRIVATE
@@ -45,6 +47,9 @@ else()
   add_test(NAME record COMMAND test_record)
   add_executable(test_udp_frame tests/host/test_udp_frame.cpp src/capture/udp_frame.cpp)
   add_test(NAME udp_frame COMMAND test_udp_frame)
+  add_executable(test_sink tests/host/test_sink.cpp src/client/sink.cpp src/capture/record.cpp)
+  target_include_directories(test_sink PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src)
+  add_test(NAME sink COMMAND test_sink)
   add_executable(test_versionlock tests/host/test_versionlock.cpp src/client/versionlock.cpp)
   add_test(NAME versionlock COMMAND test_versionlock)
   add_executable(test_sha256 tests/host/test_sha256.cpp src/client/sha256.cpp)
