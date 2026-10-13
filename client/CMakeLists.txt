@@ -1,0 +1,62 @@
+cmake_minimum_required(VERSION 3.25)
+project(fc5mp_client CXX)
+set(CMAKE_CXX_STANDARD 17)
+set(CMAKE_CXX_STANDARD_REQUIRED ON)
+
+include(FetchContent)
+if(CMAKE_SYSTEM_NAME STREQUAL "Windows")
+  FetchContent_Declare(minhook
+    GIT_REPOSITORY https://github.com/TsudaKageyu/minhook.git
+    GIT_TAG 4a455528f61b5a375b1f9d44e7d296d47f18bb18)
+  set(CMAKE_POLICY_VERSION_MINIMUM 3.5)  # MinHook 1.3.3 ships a pre-3.5 CMakeLists
+  FetchContent_MakeAvailable(minhook)
+endif()
+
+if(CMAKE_SYSTEM_NAME STREQUAL "Windows")
+  add_library(version SHARED src/version_proxy/dllmain.cpp)
+  set_target_properties(version PROPERTIES PREFIX "" OUTPUT_NAME "version"
+    LINK_FLAGS "${CMAKE_CURRENT_SOURCE_DIR}/src/version_proxy/version_proxy.def")
+
+  # hook core links MinHook (proves the fetch + cross-compile works)
+  add_library(fc5mp_hookcore STATIC src/hookcore/hookcore.cpp)
+  target_link_libraries(fc5mp_hookcore PRIVATE minhook)
+  target_include_directories(fc5mp_hookcore PRIVATE ${minhook_SOURCE_DIR}/include)
+
+  add_library(fc5mp-client SHARED
+    src/client/dllmain.cpp
+    src/client/versionlock.cpp
+    src/client/sha256.cpp
+    src/client/targets.cpp
+    src/sig/signature.cpp
+    src/capture/record.cpp
+    src/hookcore/hookcore.cpp)
+  set_target_properties(fc5mp-client PROPERTIES PREFIX "" OUTPUT_NAME "fc5mp-client")
+  target_include_directories(fc5mp-client PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR}/src ${minhook_SOURCE_DIR}/include)
+  target_link_libraries(fc5mp-client PRIVATE minhook)
+else()
+  enable_testing()
+  add_executable(test_smoke tests/host/test_smoke.cpp)
+  add_test(NAME smoke COMMAND test_smoke)
+  add_executable(test_exports tests/host/test_exports.cpp src/pe/exports.cpp)
+  add_executable(test_hookcore_iface tests/host/test_hookcore_iface.cpp src/hookcore/hookcore.cpp)
+  add_test(NAME hookcore COMMAND test_hookcore_iface)
+  add_executable(test_record tests/host/test_record.cpp src/capture/record.cpp)
+  add_test(NAME record COMMAND test_record)
+  add_executable(test_versionlock tests/host/test_versionlock.cpp src/client/versionlock.cpp)
+  add_test(NAME versionlock COMMAND test_versionlock)
+  add_executable(test_sha256 tests/host/test_sha256.cpp src/client/sha256.cpp)
+  add_test(NAME sha256 COMMAND test_sha256)
+  set_tests_properties(sha256 PROPERTIES ENVIRONMENT
+    "FC5_DLL=/home/kalopsia/.local/share/Steam/steamapps/common/FarCry5/bin/FC_m64.dll")
+  add_executable(test_targets tests/host/test_targets.cpp src/client/targets.cpp src/sig/signature.cpp)
+  target_include_directories(test_targets PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src)
+  add_test(NAME targets COMMAND test_targets)
+  set_tests_properties(targets PROPERTIES ENVIRONMENT
+    "FC5_DLL=/home/kalopsia/.local/share/Steam/steamapps/common/FarCry5/bin/FC_m64.dll")
+  add_executable(test_signature tests/host/test_signature.cpp src/sig/signature.cpp)
+  add_test(NAME signature COMMAND test_signature)
+  set_tests_properties(signature PROPERTIES ENVIRONMENT
+    "FC5_DLL=/home/kalopsia/.local/share/Steam/steamapps/common/FarCry5/bin/FC_m64.dll")
+  add_test(NAME exports COMMAND test_exports "/home/kalopsia/.local/share/Steam/steamapps/common/Proton 10.0/files/lib/wine/x86_64-windows/version.dll")
+endif()
