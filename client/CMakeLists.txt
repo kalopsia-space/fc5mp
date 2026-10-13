@@ -5,7 +5,8 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
 if(CMAKE_SYSTEM_NAME STREQUAL "Windows")
   add_library(version SHARED src/version_proxy/dllmain.cpp)
-  set_target_properties(version PROPERTIES PREFIX "" OUTPUT_NAME "version")
+  set_target_properties(version PROPERTIES PREFIX "" OUTPUT_NAME "version"
+    LINK_FLAGS "${CMAKE_CURRENT_SOURCE_DIR}/src/version_proxy/version_proxy.def")
 else()
   enable_testing()
   add_executable(test_smoke tests/host/test_smoke.cpp)
