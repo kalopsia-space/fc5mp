@@ -141,7 +141,7 @@ docs/
   superpowers/plans/2026-10-13-fc5mp-p0-feasibility.md
   superpowers/plans/2026-10-13-fc5mp-p1-harness.md
   superpowers/research/2026-10-13-p0-findings.md    ← the GO decision + evidence
-analysis/           ← P0 Python RE toolkit (fc5analyze), uv project, 24 pytest tests
+analysis/           ← P0 Python RE toolkit (fc5analyze), uv project, 26 pytest tests
   fc5analyze/{peimage,functable,xref,strings,callgraph,probe}.py
   anchors.py        ← runs the P0 analysis → out/p0.json
   capdump.py        ← summarize a capture file (Phase A verdict, UDP peers); fc5analyze/capture.py
@@ -171,7 +171,7 @@ scripts/launch-capture.sh  ← stages DLLs beside game, prints Steam launch opti
 
 **Build & test commands:**
 ```bash
-# Python RE toolkit (24 tests; some scan the 238MB DLL, ~40s total)
+# Python RE toolkit (26 tests; some scan the 238MB DLL, ~40s total)
 cd analysis && uv run pytest -q
 
 # Host unit tests (10 tests; clang; some scan the real DLL, ~65s)
@@ -204,10 +204,13 @@ original untouched, logs one record, and restores last-error. All of it goes thr
 process-wide writer (`client/sink.cpp`). Verified under Wine 11.19 by
 `client/build-win/test_net_hooks.exe` (`WINEPREFIX=<scratch> wine build-win/test_net_hooks.exe`).
 
-**Does NOT yet:** (a) capture TLS plaintext (P1.5b); (b) capture the data of an overlapped
-`WSARecvFrom` that returns `WSA_IO_PENDING`: it leaves a `RECV_PENDING` marker (capped at 64).
-If Phase A shows many of those, add completion-side capture (`WSAGetOverlappedResult` /
-`GetQueuedCompletionStatus`, keyed by the OVERLAPPED pointer).
+**Does NOT yet:** (a) capture TLS plaintext (P1.5b); (b) capture the data of ANY overlapped
+`WSARecvFrom` (inline-completed or pending). After the call, a completion worker may own the
+buffers, so the detour doesn't touch them. Each such call leaves a `RECV_PENDING` marker
+carrying a running count; the first 64 are logged, then every 1024th, and capdump shows the
+total. If Phase A shows many, add completion-side capture (`WSAGetOverlappedResult` /
+`GetQueuedCompletionStatus`, keyed by the OVERLAPPED pointer). Overlapped `WSASendTo` IS
+captured: its record is encoded before the call.
 
 **Capture file format** (`capture/record.{hpp,cpp}`): append-only frames, little-endian:
 `[u64 ts_ns][u8 kind][u32 len][len bytes]`. Current kinds: 10=rdv_createsession addr,

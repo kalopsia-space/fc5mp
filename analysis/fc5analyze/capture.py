@@ -56,7 +56,13 @@ def parse(data: bytes) -> tuple[list[Frame], int]:
     return frames, len(data) - off
 
 
+class BadRecord(ValueError):
+    """A frame payload that doesn't match its kind's layout."""
+
+
 def decode_udp(p: bytes) -> Udp:
+    if len(p) < 13 or p[12] > 16 or len(p) < 17 + p[12]:
+        raise BadRecord(f"udp record of {len(p)} bytes")
     sock, family = struct.unpack_from("<QH", p, 0)
     port = int.from_bytes(p[10:12], "big")
     alen = p[12]
@@ -74,31 +80,42 @@ def _peer_key(u: Udp) -> str:
 
 def summarize(frames: list[Frame]) -> dict:
     s: dict = {"counts": {}, "addresses": {}, "sig_missing": [], "hook_failed": [],
-               "apis_seen": [], "module_timeout": False, "recv_pending": 0, "peers": {}}
+               "apis_seen": [], "module_timeout": False, "recv_pending": 0, "peers": {},
+               "bad_records": 0}
     for f in frames:
         name = KIND_NAMES.get(f.kind, f"kind{f.kind}")
         s["counts"][name] = s["counts"].get(name, 0) + 1
-        if f.kind in ADDRESS_KINDS:
-            s["addresses"][ADDRESS_KINDS[f.kind]] = hex(struct.unpack("<Q", f.payload)[0])
-        elif f.kind == 251:
-            s["sig_missing"].append(TARGET_NAMES[f.payload[0]] if f.payload[0] < len(TARGET_NAMES) else f.payload[0])
-        elif f.kind == 252:
-            s["hook_failed"].append(API_NAMES[f.payload[0]] if f.payload[0] < len(API_NAMES) else f.payload[0])
-        elif f.kind == 30:
-            s["apis_seen"].append(API_NAMES[f.payload[0]] if f.payload[0] < len(API_NAMES) else f.payload[0])
-        elif f.kind == 31:
-            s["recv_pending"] += 1
-        elif f.kind == 250:
-            s["module_timeout"] = True
-        elif f.kind in (20, 21):
-            u = decode_udp(f.payload)
-            d = "send" if f.kind == 20 else "recv"
-            p = s["peers"].setdefault(_peer_key(u), {"send_pkts": 0, "send_bytes": 0,
-                                                     "recv_pkts": 0, "recv_bytes": 0})
-            p[f"{d}_pkts"] += 1
-            p[f"{d}_bytes"] += u.orig_len
+        try:
+            _apply(s, f)
+        except (BadRecord, struct.error, IndexError):
+            s["bad_records"] += 1
     # Phase A smoke test: harness injected, all markers resolved in the mapped
     # image, every hook installed.
     s["phase_a_ok"] = (len(s["addresses"]) == len(ADDRESS_KINDS) and not s["sig_missing"]
                        and not s["hook_failed"] and not s["module_timeout"])
     return s
+
+
+def _apply(s: dict, f: Frame) -> None:
+    if f.kind in ADDRESS_KINDS:
+        s["addresses"][ADDRESS_KINDS[f.kind]] = hex(struct.unpack("<Q", f.payload)[0])
+    elif f.kind == 251:
+        s["sig_missing"].append(TARGET_NAMES[f.payload[0]] if f.payload[0] < len(TARGET_NAMES) else f.payload[0])
+    elif f.kind == 252:
+        s["hook_failed"].append(API_NAMES[f.payload[0]] if f.payload[0] < len(API_NAMES) else f.payload[0])
+    elif f.kind == 30:
+        s["apis_seen"].append(API_NAMES[f.payload[0]] if f.payload[0] < len(API_NAMES) else f.payload[0])
+    elif f.kind == 31:
+        # markers carry a running count and are thinned after the first 64,
+        # so the true total is the largest count seen
+        (n,) = struct.unpack_from("<I", f.payload, 8)
+        s["recv_pending"] = max(s["recv_pending"], n)
+    elif f.kind == 250:
+        s["module_timeout"] = True
+    elif f.kind in (20, 21):
+        u = decode_udp(f.payload)
+        d = "send" if f.kind == 20 else "recv"
+        p = s["peers"].setdefault(_peer_key(u), {"send_pkts": 0, "send_bytes": 0,
+                                                 "recv_pkts": 0, "recv_bytes": 0})
+        p[f"{d}_pkts"] += 1
+        p[f"{d}_bytes"] += u.orig_len

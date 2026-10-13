@@ -56,3 +56,22 @@ def test_summarize_peers_and_phase_a_verdict():
     assert s["phase_a_ok"] is False
     assert s["sig_missing"] == ["create_coop_leash"] and s["hook_failed"] == ["WSARecvFrom"]
     assert s["addresses"] == {"rdv_createsession": "0x1"}
+
+
+def test_overlapped_marker_true_count():
+    marks = b"".join(frame(31, struct.pack("<QI", 5, n)) for n in (1, 2, 1024, 2048))
+    frames, _ = parse(marks)
+    assert summarize(frames)["recv_pending"] == 2048
+
+
+def test_corrupt_records_counted_not_fatal():
+    good = udp(1, 2, 80, bytes([1, 2, 3, 4]), b"ok")
+    frames, _ = parse(
+        frame(20, good)
+        + frame(20, b"\x00" * 5)                          # too short
+        + frame(21, good[:12] + b"\x11" + b"\x00" * 30)   # addr_len 17
+        + frame(10, b"\x01\x02")                          # address frame not 8 bytes
+    )
+    s = summarize(frames)
+    assert s["bad_records"] == 3
+    assert s["peers"]["1.2.3.4:80"]["send_pkts"] == 1

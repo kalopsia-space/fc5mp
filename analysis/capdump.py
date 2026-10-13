@@ -28,7 +28,9 @@ def main(argv: list[str]) -> int:
             print(f"  {k}: {', '.join(map(str, s[k]))}")
     print(f"UDP APIs used: {', '.join(map(str, s['apis_seen'])) or 'none'}")
     if s["recv_pending"]:
-        print(f"  overlapped WSARecvFrom pending: {s['recv_pending']} (recv data NOT captured for these)")
+        print(f"  overlapped WSARecvFrom calls: {s['recv_pending']} (recv data NOT captured for these)")
+    if s["bad_records"]:
+        print(f"  malformed records skipped: {s['bad_records']}")
     print(f"UDP peers: {len(s['peers'])}")
     for peer, c in sorted(s["peers"].items(), key=lambda kv: -(kv[1]["send_bytes"] + kv[1]["recv_bytes"])):
         print(f"  {peer:45} send {c['send_pkts']:6} pkts {c['send_bytes']:9} B   "

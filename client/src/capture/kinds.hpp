@@ -13,7 +13,8 @@ constexpr uint8_t UDP_SEND          = 20;
 constexpr uint8_t UDP_RECV          = 21;
 // net-hook diagnostics
 constexpr uint8_t API_SEEN          = 30;   // payload: u8 api id, first call of each hooked API
-constexpr uint8_t RECV_PENDING      = 31;   // payload: u64 socket, overlapped recv not captured
+constexpr uint8_t RECV_PENDING      = 31;   // payload: u64 socket, u32 running count;
+                                            // overlapped WSARecvFrom, data NOT captured
 // harness self-diagnosis
 constexpr uint8_t MODULE_TIMEOUT    = 250;  // FC_m64.dll never mapped (len 0)
 constexpr uint8_t SIG_MISSING       = 251;  // payload: u8 target-table index

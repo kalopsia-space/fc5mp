@@ -33,8 +33,9 @@ echo "  (these are new files; the game's own files are untouched)"
 if [ -f "$BIN/version.dll" ] && [ ! -f "$BIN/fc5mp-client.dll" ]; then
   echo "refusing: $BIN/version.dll exists but was not staged by fc5mp"; exit 1
 fi
-cp -f "$BUILD/version.dll"       "$BIN/version.dll"
+# client first: "our version.dll ⇒ client beside it" must hold even if interrupted
 cp -f "$BUILD/fc5mp-client.dll"  "$BIN/fc5mp-client.dll"
+cp -f "$BUILD/version.dll"       "$BIN/version.dll"
 cp -n "$REAL_VERSION"            "$BIN/version_real.dll"
 mkdir -p "$HOME/.fc5mp/captures"
 

@@ -3,6 +3,7 @@
 #include <winsock2.h>
 #include <windows.h>
 #include <atomic>
+#include <cstring>
 #include <vector>
 #include "capture/kinds.hpp"
 #include "capture/udp_frame.hpp"
@@ -14,9 +15,13 @@ namespace {
 // returns its result unchanged, and restores the caller-visible last-error
 // (WSAGetLastError == GetLastError) after logging, which may clobber it.
 
-constexpr uint32_t kMaxPendingMarkers = 64;
+// Overlapped recvs aren't captured (see d_WSARecvFrom). Their marker carries a
+// running count; the first kOverlappedMarkers are all logged, then every
+// kOverlappedEvery-th, so the reader can still see the true total.
+constexpr uint32_t kOverlappedMarkers = 64;
+constexpr uint32_t kOverlappedEvery = 1024;
 std::atomic<bool> g_seen[API_COUNT];
-std::atomic<uint32_t> g_pending{0};
+std::atomic<uint32_t> g_overlapped{0};
 thread_local bool t_in_hook = false;
 
 // Nested calls from the same thread pass straight through unlogged, so if a
@@ -36,12 +41,23 @@ void seen(Api api){
   }
 }
 
-void emit(uint8_t kind, SOCKET s, const sockaddr* sa, int salen,
-          const cap::Span* bufs, size_t nbufs, size_t total){
+std::vector<uint8_t> record(SOCKET s, const sockaddr* sa, int salen,
+                            const cap::Span* bufs, size_t nbufs, size_t total){
   auto peer = cap::peer_from_sockaddr(reinterpret_cast<const uint8_t*>(sa),
                                       sa && salen > 0 ? (size_t)salen : 0);
-  auto rec = cap::encode_udp((uint64_t)s, peer, bufs, nbufs, total);
+  return cap::encode_udp((uint64_t)s, peer, bufs, nbufs, total);
+}
+void emit(uint8_t kind, SOCKET s, const sockaddr* sa, int salen,
+          const cap::Span* bufs, size_t nbufs, size_t total){
+  auto rec = record(s, sa, salen, bufs, nbufs, total);
   client::sink().write(kind, rec.data(), rec.size());
+}
+void overlapped_recv_marker(SOCKET s){
+  uint32_t n = g_overlapped.fetch_add(1) + 1;
+  if(n > kOverlappedMarkers && n % kOverlappedEvery) return;
+  uint8_t p[12]; uint64_t sock = (uint64_t)s;
+  std::memcpy(p, &sock, 8); std::memcpy(p + 8, &n, 4);
+  client::sink().write(cap::kind::RECV_PENDING, p, sizeof p);
 }
 
 std::vector<cap::Span> spans(const WSABUF* b, DWORD n){
@@ -67,7 +83,7 @@ int WSAAPI d_sendto(SOCKET s, const char* buf, int len, int flags, const sockadd
   DWORD err = GetLastError();
   if(g.active){
     seen(API_SENDTO);
-    if(r > 0){
+    if(r >= 0){                              // 0-byte datagrams are real too
       cap::Span sp{(const uint8_t*)buf, (size_t)len};
       emit(cap::kind::UDP_SEND, s, to, tolen, &sp, 1, (size_t)r);
     }
@@ -82,7 +98,7 @@ int WSAAPI d_recvfrom(SOCKET s, char* buf, int len, int flags, sockaddr* from, i
   DWORD err = GetLastError();
   if(g.active){
     seen(API_RECVFROM);
-    if(r > 0 && !(flags & MSG_PEEK)){       // a peek is re-read by a real recv
+    if(r >= 0 && !(flags & MSG_PEEK)){       // a peek is re-read by a real recv
       cap::Span sp{(const uint8_t*)buf, (size_t)len};
       emit(cap::kind::UDP_RECV, s, from, fromlen ? *fromlen : 0, &sp, 1, (size_t)r);
     }
@@ -95,16 +111,20 @@ int WSAAPI d_WSASendTo(SOCKET s, LPWSABUF bufs, DWORD n, LPDWORD sent, DWORD fla
                        const sockaddr* to, int tolen, LPWSAOVERLAPPED ov,
                        LPWSAOVERLAPPED_COMPLETION_ROUTINE cr){
   Reentry g;
+  // Encode BEFORE the call: with overlapped I/O, once the original returns a
+  // completion worker may already own (re-arm/free) the buffers.
+  std::vector<uint8_t> rec;
+  if(g.active){
+    auto v = spans(bufs, n);
+    size_t total = 0; for(auto& sp : v) total += sp.n;
+    rec = record(s, to, tolen, v.data(), v.size(), total);
+  }
   int r = o_WSASendTo(s, bufs, n, sent, flags, to, tolen, ov, cr);
   DWORD err = GetLastError();
   if(g.active){
     seen(API_WSASENDTO);
-    // buffers are fully populated at call time, so a pending send is loggable too
-    if(r == 0 || err == WSA_IO_PENDING){
-      auto v = spans(bufs, n);
-      size_t total = 0; for(auto& sp : v) total += sp.n;
-      emit(cap::kind::UDP_SEND, s, to, tolen, v.data(), v.size(), total);
-    }
+    if(r == 0 || (r == SOCKET_ERROR && err == WSA_IO_PENDING))
+      client::sink().write(cap::kind::UDP_SEND, rec.data(), rec.size());
   }
   SetLastError(err);
   return r;
@@ -120,14 +140,16 @@ int WSAAPI d_WSARecvFrom(SOCKET s, LPWSABUF bufs, DWORD n, LPDWORD recvd, LPDWOR
   if(g.active){
     seen(API_WSARECVFROM);
     if(!(in_flags & MSG_PEEK)){
-      if(r == 0 && recvd){
+      if(ov){
+        // Overlapped: whether it completed inline or is pending, a completion
+        // worker may own buffers/recvd/from by now (and recvd may be NULL or
+        // stale per MSDN), so don't touch them — just mark it. Completion-side
+        // capture is deferred until Phase A shows Storm uses this path.
+        if(r == 0 || (r == SOCKET_ERROR && err == WSA_IO_PENDING))
+          overlapped_recv_marker(s);
+      } else if(r == 0 && recvd){
         auto v = spans(bufs, n);
         emit(cap::kind::UDP_RECV, s, from, fromlen ? *fromlen : 0, v.data(), v.size(), *recvd);
-      } else if(r == SOCKET_ERROR && err == WSA_IO_PENDING
-                && g_pending.fetch_add(1) < kMaxPendingMarkers){
-        // completion-side capture is deferred until Phase A shows Storm uses it
-        uint64_t sock = (uint64_t)s;
-        client::sink().write(cap::kind::RECV_PENDING, (const uint8_t*)&sock, sizeof(sock));
       }
     }
   }

@@ -67,7 +67,27 @@ int main(){
   char r1[4], r2[16]; WSABUF rbufs[2] = {{4, r1}, {16, r2}}; DWORD got = 0, fl = 0; flen = sizeof from;
   CHECK(WSARecvFrom(b, rbufs, 2, &got, &fl, (sockaddr*)&from, &flen, nullptr, nullptr) == 0 && got == 7);
 
-  // 3) last-error preserved across a failing call (non-blocking recv, nothing queued)
+  // 3) zero-length datagram (logged by sendto/recvfrom like any other)
+  CHECK(sendto(a, "", 0, 0, (sockaddr*)&addr, sizeof addr) == 0);
+  flen = sizeof from;
+  CHECK(recvfrom(b, rb, sizeof rb, 0, (sockaddr*)&from, &flen) == 0);
+
+  // 4) overlapped: send is logged (encoded before the call); recv only marked
+  { char px[] = "xyz"; WSABUF ob{3, px}; DWORD osent = 0, oflags = 0;
+    WSAOVERLAPPED ov{}; ov.hEvent = WSACreateEvent();
+    int r = WSASendTo(a, &ob, 1, nullptr, 0, (sockaddr*)&addr, sizeof addr, &ov, nullptr);
+    CHECK(r == 0 || WSAGetLastError() == WSA_IO_PENDING);
+    CHECK(WSAGetOverlappedResult(a, &ov, &osent, TRUE, &oflags) && osent == 3);
+    WSACloseEvent(ov.hEvent);
+    char ro[16]; WSABUF rob{16, ro}; DWORD ogot = 0; oflags = 0;
+    WSAOVERLAPPED rov{}; rov.hEvent = WSACreateEvent(); flen = sizeof from;
+    r = WSARecvFrom(b, &rob, 1, nullptr, &oflags, (sockaddr*)&from, &flen, &rov, nullptr);
+    CHECK(r == 0 || WSAGetLastError() == WSA_IO_PENDING);
+    CHECK(WSAGetOverlappedResult(b, &rov, &ogot, TRUE, &oflags) && ogot == 3);
+    WSACloseEvent(rov.hEvent);
+  }
+
+  // 5) last-error preserved across a failing call (non-blocking recv, nothing queued)
   u_long nb = 1; ioctlsocket(b, FIONBIO, &nb);
   CHECK(recvfrom(b, rb, sizeof rb, 0, nullptr, nullptr) == SOCKET_ERROR);
   CHECK(WSAGetLastError() == WSAEWOULDBLOCK);
@@ -75,7 +95,7 @@ int main(){
   closesocket(a); closesocket(b); WSACleanup();
 
   auto frames = read_frames(cap.c_str());
-  std::vector<fc5mp::cap::UdpRecord> sends, recvs; int seen = 0, failed = 0;
+  std::vector<fc5mp::cap::UdpRecord> sends, recvs; int seen = 0, failed = 0, pending = 0;
   for(auto& f : frames){
     if(f.kind == fc5mp::cap::kind::UDP_SEND || f.kind == fc5mp::cap::kind::UDP_RECV){
       auto r = fc5mp::cap::decode_udp(f.payload.data(), f.payload.size());
@@ -84,19 +104,29 @@ int main(){
     }
     if(f.kind == fc5mp::cap::kind::API_SEEN) seen++;
     if(f.kind == fc5mp::cap::kind::HOOK_FAILED) failed++;
+    if(f.kind == fc5mp::cap::kind::RECV_PENDING){
+      pending++;
+      CHECK(f.payload.size() == 12);
+      uint32_t n = 0; if(f.payload.size() == 12) std::memcpy(&n, &f.payload[8], 4);
+      CHECK(n == (uint32_t)pending);           // running count
+    }
   }
-  std::printf("frames=%zu sends=%zu recvs=%zu api_seen=%d hook_failed=%d\n",
-              frames.size(), sends.size(), recvs.size(), seen, failed);
+  std::printf("frames=%zu sends=%zu recvs=%zu api_seen=%d hook_failed=%d pending=%d\n",
+              frames.size(), sends.size(), recvs.size(), seen, failed, pending);
   CHECK(failed == 0);
-  CHECK(sends.size() == 2);          // exactly once each
-  CHECK(recvs.size() == 2);          // the MSG_PEEK read is not logged
-  if(sends.size() == 2){
+  CHECK(sends.size() == 4);          // exactly once each, incl. 0-byte + overlapped
+  CHECK(recvs.size() == 3);          // MSG_PEEK and the overlapped recv are not logged
+  CHECK(pending == 1);               // ...the overlapped recv leaves a marker instead
+  if(sends.size() == 4){
+    CHECK(sends[2].payload.empty() && sends[2].orig_len == 0);
+    CHECK(sends[3].payload == std::vector<uint8_t>({'x','y','z'}));
     CHECK(sends[0].payload == std::vector<uint8_t>({'h','e','l','l','o'}));
     CHECK(sends[1].payload == std::vector<uint8_t>({'a','b','c','d','e','f','g'}));
     CHECK(sends[0].peer.family == 2 && sends[0].peer.addr_len == 4 && sends[0].peer.addr[0] == 127);
     CHECK(std::memcmp(sends[0].peer.port, &addr.sin_port, 2) == 0);
   }
-  if(recvs.size() == 2){
+  if(recvs.size() == 3){
+    CHECK(recvs[2].payload.empty() && recvs[2].orig_len == 0);
     CHECK(recvs[0].payload == std::vector<uint8_t>({'h','e','l','l','o'}));
     CHECK(recvs[1].orig_len == 7);
     CHECK(recvs[1].payload == std::vector<uint8_t>({'a','b','c','d','e','f','g'}));
