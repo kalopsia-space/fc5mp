@@ -28,20 +28,44 @@ std::vector<std::pair<size_t,size_t>> resolve(const uint8_t* image, size_t size)
   }
   return out;
 }
+std::vector<size_t> missing_indices(const std::vector<std::pair<size_t,size_t>>& resolved){
+  const auto& t = table();
+  std::vector<bool> found(t.size(), false);
+  for(const auto& pr : resolved) if(pr.first < found.size()) found[pr.first] = true;
+  std::vector<size_t> miss;
+  for(size_t i=0;i<found.size();i++) if(!found[i]) miss.push_back(i);
+  return miss;
+}
 void install_all(){
 #if defined(_WIN32)
-  HMODULE m = GetModuleHandleW(L"FC_m64.dll");
-  if(!m) return;
-  // module image is mapped; scan its headers for SizeOfImage
+  // record-kind markers for the self-diagnosing live log
+  static const uint8_t KIND_MODULE_TIMEOUT = 250;  // FC_m64.dll never mapped
+  static const uint8_t KIND_SIG_MISSING    = 251;  // a table signature absent in memory
+  cap::Writer w(std::string(getenv("FC5MP_CAPTURE") ? getenv("FC5MP_CAPTURE")
+                                                    : "fc5mp-addresses.bin"));
+  // FC_m64.dll may not be mapped yet when this thread runs (loader import order
+  // is not guaranteed). Wait for it rather than silently no-op.
+  HMODULE m = nullptr;
+  for(int i=0;i<200 && !m;i++){                    // up to ~20s
+    m = GetModuleHandleW(L"FC_m64.dll");
+    if(!m) Sleep(100);
+  }
+  if(!m){ w.write(KIND_MODULE_TIMEOUT, nullptr, 0); return; }
   auto base = reinterpret_cast<const uint8_t*>(m);
   auto dos = reinterpret_cast<const IMAGE_DOS_HEADER*>(base);
   auto nt  = reinterpret_cast<const IMAGE_NT_HEADERS*>(base + dos->e_lfanew);
   size_t img = nt->OptionalHeader.SizeOfImage;
-  cap::Writer w(std::string(getenv("FC5MP_CAPTURE") ? getenv("FC5MP_CAPTURE")
-                                                    : "fc5mp-addresses.bin"));
-  for(const auto& [idx, off] : resolve(base, img)){
-    uint64_t va = reinterpret_cast<uint64_t>(base) + off;    // resolved address
-    w.write(table()[idx].kind, reinterpret_cast<const uint8_t*>(&va), sizeof(va));
+  auto resolved = resolve(base, img);
+  for(const auto& pr : resolved){
+    uint64_t va = reinterpret_cast<uint64_t>(base) + pr.second;   // resolved address
+    w.write(table()[pr.first].kind, reinterpret_cast<const uint8_t*>(&va), sizeof(va));
+  }
+  // Log any table signature NOT found in the mapped image, so a short/empty
+  // capture is self-diagnosing (on-disk uniqueness is verified by the host test;
+  // mapped-image presence can only be confirmed here, in the live session).
+  for(size_t idx : missing_indices(resolved)){
+    uint8_t one = (uint8_t)idx;
+    w.write(KIND_SIG_MISSING, &one, 1);
   }
   // NOTE: inline MinHook detours for these + the TLS/UDP byte points are
   // installed in the live session (plan T9), where ABI and target-correctness

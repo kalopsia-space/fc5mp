@@ -14,5 +14,8 @@ const std::vector<Target>& table();
 // Resolve each table signature to a file/module offset in a mapped image.
 // Returns (target-index, offset) for every signature found exactly once.
 std::vector<std::pair<size_t,size_t>> resolve(const uint8_t* image, size_t size);
+// Table indices NOT present in a resolve() result — the live run logs these so a
+// short/empty capture is self-diagnosing (signature absent in the mapped image).
+std::vector<size_t> missing_indices(const std::vector<std::pair<size_t,size_t>>& resolved);
 void install_all();   // Windows: resolve in the loaded FC_m64.dll + log addresses
 }
