@@ -118,10 +118,23 @@ decoding then requires a client-side pre-encryption tap, reserved in the net shi
 ## 6. Co-op widening module
 
 ### 6.1 Phase 0 gate (read-only feasibility spike)
-Recover the C++ class hierarchy from RTTI (`.?AV...` type descriptors) and determine whether
-co-op player storage is the **generic N-player manager shared with Versus** (proceed: mostly
-logic patches) or **fixed 2-slot arrays** (stop and re-plan: hybrid approach C, or target 3
-players). Also compare co-op vs Versus net-object base classes.
+Determine whether co-op player storage is the **generic N-player manager shared with Versus**
+(proceed: mostly logic patches) or **fixed 2-slot arrays** (stop and re-plan: hybrid approach C,
+or target 3 players). Also compare co-op vs Versus code paths.
+
+**Method (amended 2026-10-13):** game classes are compiled **without RTTI** — the only 856
+`.?AV` descriptors belong to third-party libraries (CryptoPP, Havok, std, …). P0 therefore uses:
+- **String anchors** — the game's debug/log format strings name their owning functions
+  (e.g. `CGRStateCampaignInGame::DoSpawnPlayer() playerId: %d`); RIP-relative LEA xrefs locate
+  the code that uses them.
+- **Function table** — the PE exception directory (369,061 `RUNTIME_FUNCTION` entries, intact)
+  gives function boundaries; chained unwind info resolves fragments to primary functions.
+- **Shared-callee analysis** — callee closures of co-op-anchored vs Versus-anchored functions;
+  shared player-list accessors indicate generic storage.
+- **Operand probing** — small-constant compares (`cmp reg, 2`) and scaled indexed accesses in
+  partner-related functions indicate fixed-width storage.
+- **Vtable recovery** — runs of function-start pointers in data sections, to group functions
+  into classes.
 
 ### 6.2 Limit taxonomy
 1. **Admission caps** — session size (served by our config), join validation, session-full checks.
