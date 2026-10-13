@@ -17,7 +17,8 @@ BIN="/home/kalopsia/.local/share/Steam/steamapps/common/FarCry5/bin"
 BUILD="$(cd "$(dirname "$0")/.." && pwd)/client/build-win"
 REAL_VERSION="$(find /home/kalopsia/.local/share/Steam/steamapps/common/Proton* \
   -name version.dll -path '*x86_64-windows*' 2>/dev/null | head -1)"
-CAP="$HOME/.fc5mp/captures/session-$ROLE.bin"
+# timestamp the capture file so re-runs / retries never append into one another
+CAP="$HOME/.fc5mp/captures/session-$ROLE-$(date +%Y%m%d-%H%M%S).bin"
 
 for f in version.dll fc5mp-client.dll; do
   [ -f "$BUILD/$f" ] || { echo "missing build artifact: $BUILD/$f (build client first)"; exit 1; }
@@ -53,6 +54,7 @@ MSG
 fi
 cat <<MSG
 Capture lands at: $CAP
-Run this once per machine, once per role. To remove the harness later:
+Re-run this script for each session to get a fresh launch option (host first,
+guest in a later session where your friend hosts). To remove the harness later:
   rm "$BIN/version.dll" "$BIN/fc5mp-client.dll" "$BIN/version_real.dll"
 MSG
