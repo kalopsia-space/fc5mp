@@ -4,6 +4,7 @@
 #if defined(_WIN32)
 #include <windows.h>
 #include "sink.hpp"
+#include "tls_hooks.hpp"
 #endif
 namespace fc5mp::targets {
 const std::vector<Target>& table(){
@@ -62,10 +63,16 @@ void install_all(){
   auto nt  = reinterpret_cast<const IMAGE_NT_HEADERS*>(base + dos->e_lfanew);
   size_t img = nt->OptionalHeader.SizeOfImage;
   auto resolved = resolve(base, img);
+  void* ssl_read = nullptr; void* ssl_write = nullptr;
   for(const auto& pr : resolved){
     uint64_t va = reinterpret_cast<uint64_t>(base) + pr.second;   // resolved address
     w.write(table()[pr.first].kind, reinterpret_cast<const uint8_t*>(&va), sizeof(va));
+    if(table()[pr.first].kind == cap::kind::SSL_READ_ADDR)  ssl_read  = reinterpret_cast<void*>(va);
+    if(table()[pr.first].kind == cap::kind::SSL_WRITE_ADDR) ssl_write = reinterpret_cast<void*>(va);
   }
+  // Install the TLS plaintext detours on the static OpenSSL entry points.
+  // tls::install_at logs HOOK_FAILED for either address it can't resolve/hook.
+  fc5mp::tls::install_at(ssl_read, ssl_write);
   // Log any table signature NOT found in the mapped image, so a short/empty
   // capture is self-diagnosing (on-disk uniqueness is verified by the host test;
   // mapped-image presence can only be confirmed here, in the live session).
