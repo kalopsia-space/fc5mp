@@ -37,7 +37,8 @@ fixed 2-slot arrays) and the fact that Versus already runs the same lower netcod
 | **P0** | Feasibility: is co-op player storage generic or fixed-2? | **DONE → GO** (merged) |
 | **P0.5** | Manual disasm of partner funcs | **DONE** (dynamic vector, no cmp-2 cap) |
 | **P1** | Interception harness (injected client, build-now parts) | **DONE, merged to main** |
-| **P1 live** | Task 9: run the harness in-game, capture protocol | **NOT STARTED — needs the game** |
+| **P1 Phase A** | Solo smoke test (menu, quit) | **DONE → OK** (2026-10-14, see §6a) |
+| **P1 Phase B** | Two co-op capture sessions (host, then guest) | **NOT STARTED — needs the friend** |
 | **P1.5a** | Winsock UDP traffic-capture hooks + `capdump` reader | **DONE** (plan `2026-10-13-fc5mp-p1.5-udp-capture.md`) |
 | **P1.5b** | Static-OpenSSL TLS plaintext hooks inside FC_m64 | **NOT STARTED** (RE needed) |
 | **P2** | Replacement server (Rust): auth + UbiServices/RdV emulation | not started |
@@ -46,9 +47,7 @@ fixed 2-slot arrays) and the fact that Versus already runs the same lower netcod
 | **P5** | Co-op widening M1→M4 (the actual 4-player work) | not started |
 
 **The immediate next actions**, in order:
-1. **(Optional, cheap) Phase A smoke test** — user launches game to main menu solo, quits, hands
-   back `~/.fc5mp/captures/*.bin`. Confirms the harness injects + resolves under their Proton +
-   Denuvo setup (checks the 3 addresses resolved, no timeout/missing markers). No friend needed.
+1. ~~Phase A smoke test~~ **DONE, OK** (§6a).
    Rebuild + `scripts/launch-capture.sh host`, then check with `analysis/capdump.py` (prints
    "Phase A: OK/PROBLEM" + which UDP APIs the game called — that also tells us whether Storm uses
    overlapped `WSARecvFrom`, whose data is NOT captured yet; see §6).
@@ -221,6 +220,31 @@ captured: its record is encoded before the call.
 `client/src/capture/udp_frame.hpp`. Python reader: `analysis/fc5analyze/capture.py`;
 CLI: `cd analysis && uv run python capdump.py <capture.bin>`.
 
+### 6a. Phase A result (2026-10-14, solo, ~60 s to main menu)
+
+`session-host-20261014-000808.bin`: 205 frames, **Phase A OK**.
+- **Injection works under the user's Proton + Denuvo.** All 3 signatures resolved in the
+  *mapped* image, so on-disk bytes == mapped bytes for these `.xpdata` sites (§9 risk retired for
+  them). FC_m64 is **relocated** under Wine: base `0x6fffde310000`, not the preferred
+  `0x180000000`. All three hits agree on that base. Always work in RVAs.
+- **All 4 UDP APIs are used.** Overlapped `WSARecvFrom` (15 calls, data not captured) happens
+  **only on one socket**, the one talking to `203.132.26.146:6570`. That socket sends a
+  `3f 31 20 00 …` protocol and none of its receives were captured. Every other socket
+  receives synchronously and is fully captured.
+- Traffic seen at the menu (interpretation, not yet confirmed):
+  - `203.132.26.108/.109 : 11000/11001`: request `10 01 00 <seq>` → reply
+    `13 01 00 <seq> 02 04 <port:2> <ipv4:4>`, i.e. the server echoes our public mapped endpoint.
+    This is **STUN-like NAT-type detection** (two IPs × two ports, so it can tell the NAT mapping
+    behaviour) — Storm's Punch/NAT detection, plaintext.
+  - `203.132.26.108:11005`: `10 40 00 01 …` ↔ `12 41 …`, another plaintext Storm service
+    (probably registration/punch).
+  - `{3.73.55.101, 47.129.218.88, 54.79.133.166, 54.91.153.249}:12000` (AWS
+    Frankfurt/Singapore/Sydney/Virginia): 48-byte all-zero probes echoed back, i.e.
+    **regional latency pings** (relay/region selection).
+  - `239.255.255.250:1900`: SSDP M-SEARCH, i.e. UPnP router port-mapping discovery.
+- The Storm UDP header bytes seen so far are plaintext. Whether P2P game payloads are encrypted
+  is still for Phase B to show.
+
 ---
 
 ## 7. Live capture logistics (Task 9) — the user's real-world constraints
@@ -276,9 +300,10 @@ Launch-option template the script prints:
 
 ## 9. Open questions / risks to carry forward
 
-- **Does on-disk == mapped bytes under Denuvo** for the `.xpdata` signatures? P0 findings and the
-  3 signatures are from the on-disk file; install_all's per-signature "missing" markers will tell
-  us live. If they don't resolve in-memory, signatures must be re-derived from a memory dump.
+- ~~Does on-disk == mapped bytes under Denuvo?~~ **Yes for the 3 marker sites** (Phase A). Not
+  proven for every region; keep checking new signatures live.
+- **Overlapped-recv gap:** only the `:6570` socket uses it at the menu. If Phase B's P2P socket
+  does too, the receive side of P2P is lost, so add completion-side capture first (§6).
 - **Join flow:** how a guest triggers joining in-game isn't mapped yet (Phase B guest capture
   answers this). Fallback if the in-game flow is unusable: call `CJoinStormSessionOperation`
   directly from the client.
