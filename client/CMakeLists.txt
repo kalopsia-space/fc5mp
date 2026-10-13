@@ -30,6 +30,12 @@ else()
   add_test(NAME hookcore COMMAND test_hookcore_iface)
   add_executable(test_record tests/host/test_record.cpp src/capture/record.cpp)
   add_test(NAME record COMMAND test_record)
+  add_executable(test_versionlock tests/host/test_versionlock.cpp src/client/versionlock.cpp)
+  add_test(NAME versionlock COMMAND test_versionlock)
+  add_executable(test_sha256 tests/host/test_sha256.cpp src/client/sha256.cpp)
+  add_test(NAME sha256 COMMAND test_sha256)
+  set_tests_properties(sha256 PROPERTIES ENVIRONMENT
+    "FC5_DLL=/home/kalopsia/.local/share/Steam/steamapps/common/FarCry5/bin/FC_m64.dll")
   add_executable(test_signature tests/host/test_signature.cpp src/sig/signature.cpp)
   add_test(NAME signature COMMAND test_signature)
   set_tests_properties(signature PROPERTIES ENVIRONMENT
