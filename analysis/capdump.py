@@ -22,15 +22,20 @@ from fc5analyze.capture import BOOT_STAGES, parse, summarize
 
 
 def main(argv: list[str]) -> int:
-    args = [a for a in argv[1:] if not a.startswith("--")]
+    # Pull out --dump DIR by position (not by normalized-string match: str(Path)
+    # drops a trailing slash, which tab-completion appends to directories).
+    args: list[str] = []
     dump_dir = None
-    if "--dump" in argv:
-        i = argv.index("--dump")
-        if i + 1 >= len(argv):
-            print(__doc__.strip())
-            return 2
-        dump_dir = Path(argv[i + 1])
-        args = [a for a in args if a != str(dump_dir)]
+    it = iter(argv[1:])
+    for a in it:
+        if a == "--dump":
+            val = next(it, None)
+            if val is None:
+                print(__doc__.strip())
+                return 2
+            dump_dir = Path(val)
+        elif not a.startswith("--"):
+            args.append(a)
     if len(args) != 1:
         print(__doc__.strip())
         return 2
