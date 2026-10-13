@@ -1,6 +1,6 @@
 # fc5mp — Project Handoff (everything a future session needs)
 
-**Last updated:** 2026-10-13 (P1.5a). **Repo:** `/home/kalopsia/fc5mp` (git, branch `main`, no remote).
+**Last updated:** 2026-10-14 (P1.5b). **Repo:** `/home/kalopsia/fc5mp` (git, branch `main`, no remote).
 **User:** kalopsia (neosquared2002@gmail.com). Machine: Arch Linux, AMD 7900 XTX, plays games on this box.
 
 Read this top to bottom before touching anything. It is the single source of truth; the
@@ -40,7 +40,7 @@ fixed 2-slot arrays) and the fact that Versus already runs the same lower netcod
 | **P1 Phase A** | Solo smoke test (menu, quit) | **DONE → OK** (2026-10-14, see §6a) |
 | **P1 Phase B** | Two co-op capture sessions (host, then guest) | **NOT STARTED — needs the friend** |
 | **P1.5a** | Winsock UDP traffic-capture hooks + `capdump` reader | **DONE** (plan `2026-10-13-fc5mp-p1.5-udp-capture.md`) |
-| **P1.5b** | Static-OpenSSL TLS plaintext hooks inside FC_m64 | **NOT STARTED** (RE needed) |
+| **P1.5b** | Static-OpenSSL TLS plaintext hooks inside FC_m64 | **DONE** (Wine-tested; plan `2026-10-14-fc5mp-p1.5b-tls-capture.md`) — live capture needs Phase B |
 | **P2** | Replacement server (Rust): auth + UbiServices/RdV emulation | not started |
 | **P3** | Relay hub + net shim redirection | not started |
 | **P4** | Fake-peer tool | not started |
@@ -51,12 +51,11 @@ fixed 2-slot arrays) and the fact that Versus already runs the same lower netcod
    Rebuild + `scripts/launch-capture.sh host`, then check with `analysis/capdump.py` (prints
    "Phase A: OK/PROBLEM" + which UDP APIs the game called — that also tells us whether Storm uses
    overlapped `WSARecvFrom`, whose data is NOT captured yet; see §6).
-2. **P1.5b — TLS plaintext.** UDP capture is done (P1.5a). HTTPS/wss (UbiServices login, config,
-   RdV) still needs the game's **statically-linked** OpenSSL `SSL_write`/`SSL_read` found inside
-   `FC_m64.dll` (harder RE: string anchors like OpenSSL's `ssl/ssl_lib.c` asserts → function →
-   signature, then a Wine-tested detour like `tests/win/test_net_hooks.cpp`). Phase B can run
-   with UDP only if the user prefers to start capturing sooner.
-3. **Phase B live capture** — the real thing (§7). Needs the friend.
+2. ~~P1.5b — TLS plaintext.~~ **DONE** (Wine-tested, not yet exercised in-game). Observe-only
+   detours on the static OpenSSL `SSL_read`/`SSL_write` inside `FC_m64.dll` now log redacted
+   plaintext (§6b). The remaining verification is live: Phase A/B will show whether login traffic
+   predates the hooks (BOOT markers make that visible).
+3. **Phase B live capture** — the real thing (§7). Needs the friend. UDP + TLS both capture now.
 4. Decode captures → protocol map → start P2 (the server).
 
 ---
@@ -170,16 +169,17 @@ scripts/launch-capture.sh  ← stages DLLs beside game, prints Steam launch opti
 
 **Build & test commands:**
 ```bash
-# Python RE toolkit (26 tests; some scan the 238MB DLL, ~40s total)
+# Python RE toolkit (29 tests; some scan the 238MB DLL, ~40s total)
 cd analysis && uv run pytest -q
 
-# Host unit tests (10 tests; clang; some scan the real DLL, ~65s)
+# Host unit tests (11 tests; clang; some scan the real DLL, ~65s; redact under ASan/UBSan)
 cd client && cmake -B build-host -G Ninja -DCMAKE_CXX_COMPILER=clang++ && cmake --build build-host && ctest --test-dir build-host --output-on-failure
 
 # Cross-build the Windows DLLs (fetches MinHook over network first time)
 cd client && cmake -B build-win -G Ninja -DCMAKE_TOOLCHAIN_FILE=cmake/mingw-w64-x86_64.cmake && cmake --build build-win
 # → build-win/version.dll (16 forwarders) + build-win/fc5mp-client.dll (both PE32+)
-#   + build-win/test_net_hooks.exe → run: WINEPREFIX=<scratch dir> wine build-win/test_net_hooks.exe
+#   + build-win/test_net_hooks.exe (UDP) + build-win/test_tls_hooks.exe (TLS)
+#     → run: WINEPREFIX=<scratch dir> wine build-win/test_<net|tls>_hooks.exe
 ```
 Note: `FC5_DLL` env defaults to the game path; host tests that scan the DLL are guarded by it
 being present, so they'd pass vacuously on a machine without the game.
@@ -192,9 +192,9 @@ being present, so they'd pass vacuously on a machine without the game.
 forwards all 16 real exports to `version_real.dll` (a copy of the real one, staged by the script)
 and spawns a thread that `LoadLibrary`s `fc5mp-client.dll`. The client hashes `bin/FC_m64.dll`,
 self-disables cleanly if it's not the supported build, else waits (≤20s) for FC_m64.dll to be
-mapped, resolves the 3 marker signatures in the **mapped** image, and writes their resolved
+mapped, resolves the marker signatures in the **mapped** image, writes their resolved
 addresses (+ a module-timeout or per-signature-missing marker if something's off) to the capture
-file at `$FC5MP_CAPTURE`.
+file at `$FC5MP_CAPTURE`, and installs the TLS detours (§6b).
 
 **P1.5a added UDP capture:** observe-only MinHook detours on ws2_32 `sendto`, `recvfrom`,
 `WSASendTo`, `WSARecvFrom` (`client/net_hooks.cpp`), hooked by export so no FC_m64 RE was needed.
@@ -203,7 +203,12 @@ original untouched, logs one record, and restores last-error. All of it goes thr
 process-wide writer (`client/sink.cpp`). Verified under Wine 11.19 by
 `client/build-win/test_net_hooks.exe` (`WINEPREFIX=<scratch> wine build-win/test_net_hooks.exe`).
 
-**Does NOT yet:** (a) capture TLS plaintext (P1.5b); (b) capture the data of ANY overlapped
+**P1.5b added TLS plaintext capture** (§6b): observe-only detours on the statically-linked
+OpenSSL `SSL_read`/`SSL_write` inside FC_m64, installed by `targets::install_all` once the
+image is mapped and its signatures resolved. See §6b for the redaction and the sensitivity
+warning.
+
+**Does NOT yet:** (a) redact gzip-compressed or XOR-masked websocket bodies (§6b); (b) capture the data of ANY overlapped
 `WSARecvFrom` (inline-completed or pending). After the call, a completion worker may own the
 buffers, so the detour doesn't touch them. Each such call leaves a `RECV_PENDING` marker
 carrying a running count; the first 64 are logged, then every 1024th, and capdump shows the
@@ -216,9 +221,34 @@ captured: its record is encoded before the call.
 11=coop_leash addr, 12=spawn_player addr (payload = u64 VA); 250=module-never-mapped (len 0);
 251=signature-missing (payload = u8 table index). Writer opens `ab`, is `noexcept` + mutex-guarded
 (one atomic frame per call). Full kind table: `client/src/capture/kinds.hpp` (20/21 UDP send/recv,
-30 API_SEEN, 31 RECV_PENDING, 252 HOOK_FAILED added in P1.5a). UDP record layout:
-`client/src/capture/udp_frame.hpp`. Python reader: `analysis/fc5analyze/capture.py`;
-CLI: `cd analysis && uv run python capdump.py <capture.bin>`.
+30 API_SEEN, 31 RECV_PENDING, 252 HOOK_FAILED added in P1.5a; 1 BOOT, 13/14 ssl_read/ssl_write
+addr, 22/23 TLS_WRITE/TLS_READ added in P1.5b). UDP record layout:
+`client/src/capture/udp_frame.hpp`; TLS payload = `[u64 SSL*][redacted bytes]`
+(`client/src/capture/redact.hpp`). Python reader: `analysis/fc5analyze/capture.py`;
+CLI: `cd analysis && uv run python capdump.py <capture.bin> [--dump DIR]`.
+
+### 6b. TLS plaintext capture (P1.5b)
+
+The game statically links OpenSSL 1.0.2n inside FC_m64 (no separate ssl DLL), so there is no
+export to hook. `client/src/client/targets.cpp` carries two byte signatures (`ssl_read`,
+`ssl_write`) found via the `SSLerr(func, …, __LINE__)` shape at the top of each function; the
+host test pins them to RVAs `0x3dd0560` / `0x3dd09c0`. Once FC_m64 is mapped and resolved,
+`tls::install_at` (`client/src/client/tls_hooks.cpp`) puts observe-only MinHook detours on both.
+Each calls the original untouched, and only when it returns **>0 transferred bytes** logs that
+many bytes (not the whole buffer) as `TLS_WRITE`/`TLS_READ`, keyed by the `SSL*`; `≤0`
+(WANT_READ/close/error) logs nothing and the caller's last-error + errno are restored.
+`BOOT` markers (stage 0 boot-thread start → 1 version-lock → 2 UDP hooks → 3 TLS hooks)
+record how long the hash + module wait took, so a capture reveals whether early login traffic
+predates the hooks. Verified under Wine by `client/build-win/test_tls_hooks.exe`.
+
+> **SENSITIVITY — read before sharing a capture.** `redact()`
+> (`client/src/capture/redact.cpp`) masks, at capture time and in place (same length, so HTTP
+> framing survives), the `Authorization:` header value and the JSON values of `ticket`,
+> `sessionKey`, `rememberMeTicket`, `password`, `twoFactorAuthenticationTicket`. It CANNOT mask:
+> a secret split across two `SSL_read` buffers; gzip-compressed bodies; XOR-masked websocket
+> client→server frames. So **treat every TLS capture (and anything `capdump --dump` writes) as
+> secret** — tickets expire, but don't paste raw streams anywhere. capdump prints this reminder
+> whenever a capture has TLS streams.
 
 ### 6a. Phase A result (2026-10-14, solo, ~60 s to main menu)
 
@@ -309,8 +339,11 @@ Launch-option template the script prints:
   directly from the client.
 - **Storm payload encryption:** if UDP payloads are encrypted, the relay still works (opaque
   bytes) but decoding needs a pre-encryption client tap. TBD from the capture.
-- **TLS target identification:** static OpenSSL `SSL_write`/`SSL_read` inside FC_m64 — need to
-  find + verify. Winsock UDP is the safe first win.
+- ~~TLS target identification:~~ **DONE (P1.5b).** Static OpenSSL `SSL_read`/`SSL_write`
+  signatured + Wine-tested (§6b). Open sub-risk: hooks install only after FC_m64 maps + hashes
+  (~seconds), so login traffic sent before stage-3 BOOT is missed — Phase A/B confirms whether
+  that happens; if so, hook earlier (e.g. before the module-wait, resolving on an image-load
+  callback).
 - **Blocker #2 (host sim is 1-wide):** P0.5 cleared the *storage* fear, not the game-RULES logic.
   The real 4-player widening (P5, milestones M1-M4) is still the big unknown and depends on the
   relay capture to debug "what does the host send guest #1 that guests #2/#3 need."
@@ -324,7 +357,8 @@ Launch-option template the script prints:
 
 P0 proved it's probably feasible (player storage is a dynamic vector, no hardwired 2). P1 built and
 tested the injected-client harness (version.dll proxy + signature scanner + version-lock + capture
-writer), merged to `main`. P1.5a added **UDP traffic capture** (Wine-tested) + `capdump`.
-Next: Phase A solo smoke test, then static-OpenSSL TLS hooks (P1.5b), then the user runs two short co-op sessions (host, then guest — friend needs no setup) to capture
+writer), merged to `main`. P1.5a added **UDP traffic capture** (Wine-tested) + `capdump`; P1.5b
+added **TLS plaintext capture** on the static OpenSSL inside FC_m64 (Wine-tested, redacted, §6b).
+Phase A smoke test passed solo (§6a). Next: the user runs two short co-op sessions (host, then guest — friend needs no setup) to capture
 the protocol, which we decode to build the Rust replacement server (P2). If writes/builds suddenly
 fail, the session is in auto mode and the safety classifier is blocking — have the user turn it off.
