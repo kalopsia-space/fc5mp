@@ -15,6 +15,15 @@ const std::vector<Target>& table(){
      "55 53 57 41 54 41 56 41 57 48 8D AC 24 F8 FE FF", cap::kind::COOP_LEASH},
     {"do_spawn_player",
      "48 89 E0 55 57 48 8D A8 A8 FF FF FF 48 81 EC 48 01 00 00 80 3D 46 4B E4", cap::kind::SPAWN_PLAYER},
+    // static OpenSSL 1.0.2n: `mov eax,38h; call __chkstk; sub rsp,rax;
+    // cmp [rcx+30h],0 (handshake_func); jnz; SSLerr(func, ..., line)` — the
+    // SSL_F_* code and __LINE__ tell SSL_read (0xDF, 1019) from SSL_write (0xD0, 1046)
+    {"ssl_read",
+     "B8 38 00 00 00 E8 ?? ?? ?? ?? 48 2B E0 48 83 79 30 00 75 28 BA DF 00 00 00 C7 44 24 20 FB 03 00 00",
+     cap::kind::SSL_READ_ADDR},
+    {"ssl_write",
+     "B8 38 00 00 00 E8 ?? ?? ?? ?? 48 2B E0 48 83 79 30 00 75 28 BA D0 00 00 00 C7 44 24 20 16 04 00 00",
+     cap::kind::SSL_WRITE_ADDR},
   };
   return t;
 }
