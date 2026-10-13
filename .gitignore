@@ -9,3 +9,8 @@ scratch/
 .env
 server/target/
 build/
+analysis/out/
+analysis/.venv/
+.superpowers/
+__pycache__/
+*.pyc
