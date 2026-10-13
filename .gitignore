@@ -1,0 +1,11 @@
+# Never commit game binaries, captures, or secrets
+*.dll
+*.exe
+*.dmp
+captures/
+scratch/
+*.pcap
+*.cap
+.env
+server/target/
+build/
