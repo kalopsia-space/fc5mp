@@ -1,6 +1,6 @@
 # fc5mp — Project Handoff (everything a future session needs)
 
-**Last updated:** 2026-10-13. **Repo:** `/home/kalopsia/fc5mp` (git, branch `main`, no remote).
+**Last updated:** 2026-10-13 (P1.5a). **Repo:** `/home/kalopsia/fc5mp` (git, branch `main`, no remote).
 **User:** kalopsia (neosquared2002@gmail.com). Machine: Arch Linux, AMD 7900 XTX, plays games on this box.
 
 Read this top to bottom before touching anything. It is the single source of truth; the
@@ -38,7 +38,8 @@ fixed 2-slot arrays) and the fact that Versus already runs the same lower netcod
 | **P0.5** | Manual disasm of partner funcs | **DONE** (dynamic vector, no cmp-2 cap) |
 | **P1** | Interception harness (injected client, build-now parts) | **DONE, merged to main** |
 | **P1 live** | Task 9: run the harness in-game, capture protocol | **NOT STARTED — needs the game** |
-| **P1.5 (next dev)** | Build the real traffic-capture hooks (Winsock UDP + static OpenSSL) | **NOT STARTED** |
+| **P1.5a** | Winsock UDP traffic-capture hooks + `capdump` reader | **DONE** (plan `2026-10-13-fc5mp-p1.5-udp-capture.md`) |
+| **P1.5b** | Static-OpenSSL TLS plaintext hooks inside FC_m64 | **NOT STARTED** (RE needed) |
 | **P2** | Replacement server (Rust): auth + UbiServices/RdV emulation | not started |
 | **P3** | Relay hub + net shim redirection | not started |
 | **P4** | Fake-peer tool | not started |
@@ -48,12 +49,15 @@ fixed 2-slot arrays) and the fact that Versus already runs the same lower netcod
 1. **(Optional, cheap) Phase A smoke test** — user launches game to main menu solo, quits, hands
    back `~/.fc5mp/captures/*.bin`. Confirms the harness injects + resolves under their Proton +
    Denuvo setup (checks the 3 addresses resolved, no timeout/missing markers). No friend needed.
-2. **Build the traffic-capture hooks (P1.5).** The committed harness does NOT capture protocol
-   traffic yet — it only logs resolved addresses + diagnostics (Task 8 was scoped to that; real
-   detours were deferred). Winsock UDP (`sendto`/`recvfrom`/`WSASendTo`/`WSARecvFrom` from
-   ws2_32 — known ABI, safe) captures Storm P2P + punch. HTTPS/wss plaintext needs the game's
-   **statically-linked** OpenSSL `SSL_write`/`SSL_read` found inside `FC_m64.dll` (harder RE).
-3. **Phase B live capture** — the real thing (§7). Needs the friend + the hooks from step 2.
+   Rebuild + `scripts/launch-capture.sh host`, then check with `analysis/capdump.py` (prints
+   "Phase A: OK/PROBLEM" + which UDP APIs the game called — that also tells us whether Storm uses
+   overlapped `WSARecvFrom`, whose data is NOT captured yet; see §6).
+2. **P1.5b — TLS plaintext.** UDP capture is done (P1.5a). HTTPS/wss (UbiServices login, config,
+   RdV) still needs the game's **statically-linked** OpenSSL `SSL_write`/`SSL_read` found inside
+   `FC_m64.dll` (harder RE: string anchors like OpenSSL's `ssl/ssl_lib.c` asserts → function →
+   signature, then a Wine-tested detour like `tests/win/test_net_hooks.cpp`). Phase B can run
+   with UDP only if the user prefers to start capturing sooner.
+3. **Phase B live capture** — the real thing (§7). Needs the friend.
 4. Decode captures → protocol map → start P2 (the server).
 
 ---
@@ -137,9 +141,10 @@ docs/
   superpowers/plans/2026-10-13-fc5mp-p0-feasibility.md
   superpowers/plans/2026-10-13-fc5mp-p1-harness.md
   superpowers/research/2026-10-13-p0-findings.md    ← the GO decision + evidence
-analysis/           ← P0 Python RE toolkit (fc5analyze), uv project, 20 pytest tests
+analysis/           ← P0 Python RE toolkit (fc5analyze), uv project, 24 pytest tests
   fc5analyze/{peimage,functable,xref,strings,callgraph,probe}.py
   anchors.py        ← runs the P0 analysis → out/p0.json
+  capdump.py        ← summarize a capture file (Phase A verdict, UDP peers); fc5analyze/capture.py
   out/dll.sha256, out/p0.json (gitignored working dir)
 client/             ← P1 C++ interception harness
   CMakeLists.txt    ← dual toolchain (host clang tests + mingw DLLs)
@@ -150,27 +155,32 @@ client/             ← P1 C++ interception harness
     sig/signature.* ← exactly-once byte-signature scanner (host-tested vs real DLL)
     hookcore/       ← MinHook wrapper (fetched v1.3.3); host stub + Windows impl
     capture/record.*← fail-closed, thread-safe (mutex) capture writer
+    capture/kinds.hpp, udp_frame.* ← frame kind codes; UDP record encode/decode (host-tested)
     client/
       versionlock.* ← SHA-256 build gate (self-disables on mismatch)
       sha256.*      ← from-scratch SHA-256 (NIST-tested + reproduces real DLL SHA)
       targets.*     ← capture-point table + resolve() + install_all() (Windows)
+      sink.*        ← the one process-wide capture Writer ($FC5MP_CAPTURE)
+      net_hooks.*   ← ws2_32 UDP detours (Windows)
       dllmain.cpp   ← client entry: version-lock → init hooks (Windows)
-  tests/host/       ← 8 ctest unit tests (clang)
+  tests/host/       ← 10 ctest unit tests (clang)
+  tests/win/        ← test_net_hooks.cpp: Wine-run integration test for the UDP detours
   tools/gen_version_def.py ← regenerates version_proxy.def from a real version.dll
 scripts/launch-capture.sh  ← stages DLLs beside game, prints Steam launch option, host|guest role
 ```
 
 **Build & test commands:**
 ```bash
-# Python RE toolkit (20 tests; some scan the 238MB DLL, ~40s total)
+# Python RE toolkit (24 tests; some scan the 238MB DLL, ~40s total)
 cd analysis && uv run pytest -q
 
-# Host unit tests (8 tests; clang; some scan the real DLL, ~65s)
+# Host unit tests (10 tests; clang; some scan the real DLL, ~65s)
 cd client && cmake -B build-host -G Ninja -DCMAKE_CXX_COMPILER=clang++ && cmake --build build-host && ctest --test-dir build-host --output-on-failure
 
 # Cross-build the Windows DLLs (fetches MinHook over network first time)
 cd client && cmake -B build-win -G Ninja -DCMAKE_TOOLCHAIN_FILE=cmake/mingw-w64-x86_64.cmake && cmake --build build-win
 # → build-win/version.dll (16 forwarders) + build-win/fc5mp-client.dll (both PE32+)
+#   + build-win/test_net_hooks.exe → run: WINEPREFIX=<scratch dir> wine build-win/test_net_hooks.exe
 ```
 Note: `FC5_DLL` env defaults to the game path; host tests that scan the DLL are guarded by it
 being present, so they'd pass vacuously on a machine without the game.
@@ -187,15 +197,26 @@ mapped, resolves the 3 marker signatures in the **mapped** image, and writes the
 addresses (+ a module-timeout or per-signature-missing marker if something's off) to the capture
 file at `$FC5MP_CAPTURE`.
 
-**Does NOT yet:** capture any actual network traffic. The real MinHook detours on SSL/UDP were
-deferred (Task 8 ruling) because a wrong-ABI detour crashes the game and targets couldn't be
-verified offline. **That is the next dev job (P1.5).**
+**P1.5a added UDP capture:** observe-only MinHook detours on ws2_32 `sendto`, `recvfrom`,
+`WSASendTo`, `WSARecvFrom` (`client/net_hooks.cpp`), hooked by export so no FC_m64 RE was needed.
+They are enabled right after `hook::init`, before the ≤20s wait for FC_m64. Each detour calls the
+original untouched, logs one record, and restores last-error. All of it goes through one
+process-wide writer (`client/sink.cpp`). Verified under Wine 11.19 by
+`client/build-win/test_net_hooks.exe` (`WINEPREFIX=<scratch> wine build-win/test_net_hooks.exe`).
+
+**Does NOT yet:** (a) capture TLS plaintext (P1.5b); (b) capture the data of an overlapped
+`WSARecvFrom` that returns `WSA_IO_PENDING`: it leaves a `RECV_PENDING` marker (capped at 64).
+If Phase A shows many of those, add completion-side capture (`WSAGetOverlappedResult` /
+`GetQueuedCompletionStatus`, keyed by the OVERLAPPED pointer).
 
 **Capture file format** (`capture/record.{hpp,cpp}`): append-only frames, little-endian:
 `[u64 ts_ns][u8 kind][u32 len][len bytes]`. Current kinds: 10=rdv_createsession addr,
 11=coop_leash addr, 12=spawn_player addr (payload = u64 VA); 250=module-never-mapped (len 0);
 251=signature-missing (payload = u8 table index). Writer opens `ab`, is `noexcept` + mutex-guarded
-(one atomic frame per call, safe for the multi-threaded hooks coming in P1.5).
+(one atomic frame per call). Full kind table: `client/src/capture/kinds.hpp` (20/21 UDP send/recv,
+30 API_SEEN, 31 RECV_PENDING, 252 HOOK_FAILED added in P1.5a). UDP record layout:
+`client/src/capture/udp_frame.hpp`. Python reader: `analysis/fc5analyze/capture.py`;
+CLI: `cd analysis && uv run python capdump.py <capture.bin>`.
 
 ---
 
@@ -275,8 +296,7 @@ Launch-option template the script prints:
 
 P0 proved it's probably feasible (player storage is a dynamic vector, no hardwired 2). P1 built and
 tested the injected-client harness (version.dll proxy + signature scanner + version-lock + capture
-writer), merged to `main`. **The harness loads and resolves but does NOT capture traffic yet.**
-Next: build the real traffic hooks (Winsock UDP first — safe/known ABI; then static OpenSSL TLS),
-then the user runs two short co-op sessions (host, then guest — friend needs no setup) to capture
+writer), merged to `main`. P1.5a added **UDP traffic capture** (Wine-tested) + `capdump`.
+Next: Phase A solo smoke test, then static-OpenSSL TLS hooks (P1.5b), then the user runs two short co-op sessions (host, then guest — friend needs no setup) to capture
 the protocol, which we decode to build the Rust replacement server (P2). If writes/builds suddenly
 fail, the session is in auto mode and the safety classifier is blocking — have the user turn it off.

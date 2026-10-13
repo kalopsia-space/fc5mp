@@ -27,8 +27,14 @@ done
 
 echo "Staging into: $BIN   (role: $ROLE)"
 echo "  (these are new files; the game's own files are untouched)"
-cp -n "$BUILD/version.dll"       "$BIN/version.dll"
-cp -n "$BUILD/fc5mp-client.dll"  "$BIN/fc5mp-client.dll"
+# A version.dll with no fc5mp-client.dll beside it isn't one we staged — don't
+# clobber it. Otherwise refresh OUR two DLLs so a rebuild actually deploys
+# (cp -n here used to silently keep a stale harness).
+if [ -f "$BIN/version.dll" ] && [ ! -f "$BIN/fc5mp-client.dll" ]; then
+  echo "refusing: $BIN/version.dll exists but was not staged by fc5mp"; exit 1
+fi
+cp -f "$BUILD/version.dll"       "$BIN/version.dll"
+cp -f "$BUILD/fc5mp-client.dll"  "$BIN/fc5mp-client.dll"
 cp -n "$REAL_VERSION"            "$BIN/version_real.dll"
 mkdir -p "$HOME/.fc5mp/captures"
 
@@ -54,6 +60,8 @@ MSG
 fi
 cat <<MSG
 Capture lands at: $CAP
+Check it afterwards with:
+  (cd "$(cd "$(dirname "$0")/.." && pwd)/analysis" && uv run python capdump.py "$CAP")
 Re-run this script for each session to get a fresh launch option (host first,
 guest in a later session where your friend hosts). To remove the harness later:
   rm "$BIN/version.dll" "$BIN/fc5mp-client.dll" "$BIN/version_real.dll"
