@@ -28,6 +28,8 @@ else()
   add_executable(test_exports tests/host/test_exports.cpp src/pe/exports.cpp)
   add_executable(test_hookcore_iface tests/host/test_hookcore_iface.cpp src/hookcore/hookcore.cpp)
   add_test(NAME hookcore COMMAND test_hookcore_iface)
+  add_executable(test_record tests/host/test_record.cpp src/capture/record.cpp)
+  add_test(NAME record COMMAND test_record)
   add_executable(test_signature tests/host/test_signature.cpp src/sig/signature.cpp)
   add_test(NAME signature COMMAND test_signature)
   set_tests_properties(signature PROPERTIES ENVIRONMENT
