@@ -21,6 +21,19 @@ if(CMAKE_SYSTEM_NAME STREQUAL "Windows")
   add_library(fc5mp_hookcore STATIC src/hookcore/hookcore.cpp)
   target_link_libraries(fc5mp_hookcore PRIVATE minhook)
   target_include_directories(fc5mp_hookcore PRIVATE ${minhook_SOURCE_DIR}/include)
+
+  add_library(fc5mp-client SHARED
+    src/client/dllmain.cpp
+    src/client/versionlock.cpp
+    src/client/sha256.cpp
+    src/client/targets.cpp
+    src/sig/signature.cpp
+    src/capture/record.cpp
+    src/hookcore/hookcore.cpp)
+  set_target_properties(fc5mp-client PROPERTIES PREFIX "" OUTPUT_NAME "fc5mp-client")
+  target_include_directories(fc5mp-client PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR}/src ${minhook_SOURCE_DIR}/include)
+  target_link_libraries(fc5mp-client PRIVATE minhook)
 else()
   enable_testing()
   add_executable(test_smoke tests/host/test_smoke.cpp)
@@ -35,6 +48,11 @@ else()
   add_executable(test_sha256 tests/host/test_sha256.cpp src/client/sha256.cpp)
   add_test(NAME sha256 COMMAND test_sha256)
   set_tests_properties(sha256 PROPERTIES ENVIRONMENT
+    "FC5_DLL=/home/kalopsia/.local/share/Steam/steamapps/common/FarCry5/bin/FC_m64.dll")
+  add_executable(test_targets tests/host/test_targets.cpp src/client/targets.cpp src/sig/signature.cpp)
+  target_include_directories(test_targets PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src)
+  add_test(NAME targets COMMAND test_targets)
+  set_tests_properties(targets PROPERTIES ENVIRONMENT
     "FC5_DLL=/home/kalopsia/.local/share/Steam/steamapps/common/FarCry5/bin/FC_m64.dll")
   add_executable(test_signature tests/host/test_signature.cpp src/sig/signature.cpp)
   add_test(NAME signature COMMAND test_signature)
