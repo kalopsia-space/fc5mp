@@ -3,15 +3,31 @@ project(fc5mp_client CXX)
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
+include(FetchContent)
+if(CMAKE_SYSTEM_NAME STREQUAL "Windows")
+  FetchContent_Declare(minhook
+    GIT_REPOSITORY https://github.com/TsudaKageyu/minhook.git
+    GIT_TAG 4a455528f61b5a375b1f9d44e7d296d47f18bb18)
+  set(CMAKE_POLICY_VERSION_MINIMUM 3.5)  # MinHook 1.3.3 ships a pre-3.5 CMakeLists
+  FetchContent_MakeAvailable(minhook)
+endif()
+
 if(CMAKE_SYSTEM_NAME STREQUAL "Windows")
   add_library(version SHARED src/version_proxy/dllmain.cpp)
   set_target_properties(version PROPERTIES PREFIX "" OUTPUT_NAME "version"
     LINK_FLAGS "${CMAKE_CURRENT_SOURCE_DIR}/src/version_proxy/version_proxy.def")
+
+  # hook core links MinHook (proves the fetch + cross-compile works)
+  add_library(fc5mp_hookcore STATIC src/hookcore/hookcore.cpp)
+  target_link_libraries(fc5mp_hookcore PRIVATE minhook)
+  target_include_directories(fc5mp_hookcore PRIVATE ${minhook_SOURCE_DIR}/include)
 else()
   enable_testing()
   add_executable(test_smoke tests/host/test_smoke.cpp)
   add_test(NAME smoke COMMAND test_smoke)
   add_executable(test_exports tests/host/test_exports.cpp src/pe/exports.cpp)
+  add_executable(test_hookcore_iface tests/host/test_hookcore_iface.cpp src/hookcore/hookcore.cpp)
+  add_test(NAME hookcore COMMAND test_hookcore_iface)
   add_executable(test_signature tests/host/test_signature.cpp src/sig/signature.cpp)
   add_test(NAME signature COMMAND test_signature)
   set_tests_properties(signature PROPERTIES ENVIRONMENT

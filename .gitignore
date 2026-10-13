@@ -16,3 +16,4 @@ __pycache__/
 *.pyc
 client/build-host/
 client/build-win/
+client/third_party/minhook/
