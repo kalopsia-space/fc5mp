@@ -1,0 +1,13 @@
+cmake_minimum_required(VERSION 3.25)
+project(fc5mp_client CXX)
+set(CMAKE_CXX_STANDARD 17)
+set(CMAKE_CXX_STANDARD_REQUIRED ON)
+
+if(CMAKE_SYSTEM_NAME STREQUAL "Windows")
+  add_library(version SHARED src/version_proxy/dllmain.cpp)
+  set_target_properties(version PROPERTIES PREFIX "" OUTPUT_NAME "version")
+else()
+  enable_testing()
+  add_executable(test_smoke tests/host/test_smoke.cpp)
+  add_test(NAME smoke COMMAND test_smoke)
+endif()
