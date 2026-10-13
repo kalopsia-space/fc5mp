@@ -12,13 +12,16 @@ class FunctionTable:
         blob = pe.read_va(base + d.VirtualAddress, d.Size)
         self.count = d.Size // 12
         self._begin = []      # begin VA per entry
+        self._end = []        # end VA per entry (one past last byte)
         self._unwind = []     # unwind-info VA per entry
         for i in range(self.count):
             b, e, u = struct.unpack_from("<III", blob, i * 12)
             self._begin.append(base + b)
+            self._end.append(base + e)
             self._unwind.append(base + u)
         order = sorted(range(self.count), key=lambda i: self._begin[i])
         self._begin = [self._begin[i] for i in order]
+        self._end = [self._end[i] for i in order]
         self._unwind = [self._unwind[i] for i in order]
         self.starts = sorted(set(self._begin))
 
@@ -49,12 +52,28 @@ class FunctionTable:
             return None
         return self.pe.image_base + cb
 
+    def body_chunks(self, func_va: int) -> list[tuple[int, int]]:
+        """Contiguous [begin, end) ranges that make up the function at func_va,
+        i.e. its primary entry plus any chained-fragment entries. Empty if
+        func_va is not a function begin."""
+        idx = bisect.bisect_left(self._begin, func_va)
+        if idx >= len(self._begin) or self._begin[idx] != func_va:
+            return []
+        chunks = []
+        j = idx
+        while j < len(self._begin) and self.primary_for(self._begin[j]) == func_va:
+            chunks.append((self._begin[j], self._end[j]))
+            j += 1
+        return chunks
+
     def primary_for(self, va: int) -> int | None:
         if not self._is_executable(va):
             return None
         idx = bisect.bisect_right(self._begin, va) - 1
         if idx < 0:
             return None
+        if va >= self._end[idx]:
+            return None                 # in a gap past this entry's extent
         begin = self._begin[idx]
         unwind = self._unwind[idx]
         seen = set()

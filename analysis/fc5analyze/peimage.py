@@ -54,8 +54,12 @@ class PEImage:
         return off
 
     def read_va(self, va: int, n: int) -> bytes:
-        off = self.va_to_off(va)
-        return self._data[off:off + n]
+        s = self._sec_for_va(va)
+        off = s.raw_off + (va - s.va)
+        end = off + n
+        if not (s.raw_off <= off and end <= s.raw_off + s.raw_size):
+            raise VAError(f"read of {n} bytes at {va:#x} overruns section {s.name!r}")
+        return self._data[off:end]
 
     def assert_sha(self, expected_hex: str) -> None:
         if self.sha256.lower() != expected_hex.lower():

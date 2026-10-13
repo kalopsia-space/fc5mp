@@ -19,3 +19,13 @@ def test_missing_string_status():
     pe = PEImage(); ft = FunctionTable(pe); sc = XrefScanner(pe)
     r = anchor_functions(pe, ft, sc, b"this string is not in the binary zzz")
     assert r.status == "no-string"
+
+def test_string_present_but_unreferenced_is_no_xref():
+    # This log string exists in .xtls but no .xpdata LEA targets the copy that
+    # find_string_va keeps, so the anchor is reported no-xref (a status, never a
+    # silent guess at a function).
+    pe = PEImage(); ft = FunctionTable(pe); sc = XrefScanner(pe)
+    r = anchor_functions(pe, ft, sc, b"CGRStateCampaignInGame::OnEveryoneInATeamDead()")
+    assert r.string_vas != []          # the string is present
+    assert r.status == "no-xref"
+    assert r.functions == []

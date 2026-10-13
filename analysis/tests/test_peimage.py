@@ -23,6 +23,16 @@ def test_va_out_of_range_raises():
     with pytest.raises(VAError):
         pe.va_to_off(0x1FFFFFFFF)          # far above image
 
+def test_read_va_span_past_section_raises():
+    pe = img()
+    xt = pe.section_by_name(".xtls")
+    # start one byte before the section's raw end, read past it: must raise,
+    # not silently spill into the next section's bytes.
+    last_va = xt.va + xt.raw_size - 1
+    pe.read_va(last_va, 1)                 # in-bounds single byte is fine
+    with pytest.raises(VAError):
+        pe.read_va(last_va, 16)            # span overruns the section
+
 def test_sha_guard():
     pe = img()
     pe.assert_sha(pe.sha256)               # self matches
