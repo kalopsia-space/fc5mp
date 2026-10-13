@@ -12,15 +12,21 @@ import struct
 from dataclasses import dataclass
 
 KIND_NAMES = {
+    1: "boot",
     10: "rdv_createsession", 11: "coop_leash", 12: "spawn_player",
-    20: "udp_send", 21: "udp_recv",
+    13: "ssl_read", 14: "ssl_write",
+    20: "udp_send", 21: "udp_recv", 22: "tls_write", 23: "tls_read",
     30: "api_seen", 31: "recv_pending",
     250: "module_timeout", 251: "sig_missing", 252: "hook_failed",
 }
-ADDRESS_KINDS = {10: "rdv_createsession", 11: "create_coop_leash", 12: "do_spawn_player"}
+ADDRESS_KINDS = {10: "rdv_createsession", 11: "create_coop_leash", 12: "do_spawn_player",
+                 13: "ssl_read", 14: "ssl_write"}
 # index order of client/src/client/targets.cpp table()
-TARGET_NAMES = ["rdv_createsession", "create_coop_leash", "do_spawn_player"]
+TARGET_NAMES = ["rdv_createsession", "create_coop_leash", "do_spawn_player", "ssl_read", "ssl_write"]
 API_NAMES = ["sendto", "recvfrom", "WSASendTo", "WSARecvFrom"]
+# tls_hooks.hpp Api ids (HOOK_FAILED payload for the TLS detours)
+TLS_API_NAMES = {4: "SSL_read", 5: "SSL_write"}
+BOOT_STAGES = {0: "boot_start", 1: "version_lock", 2: "udp_hooks", 3: "tls_hooks"}
 
 _HDR = struct.Struct("<QBI")
 
@@ -72,6 +78,22 @@ def decode_udp(p: bytes) -> Udp:
     return Udp(sock, family, port, addr, orig, p[17 + alen:])
 
 
+def _note_request(st: dict, body: bytes) -> None:
+    """Record the first HTTP request line and Host header seen on a stream."""
+    if st["request_line"] is not None or b"\r\n" not in body:
+        return
+    head = body.split(b"\r\n\r\n", 1)[0]
+    lines = head.split(b"\r\n")
+    first = lines[0].decode("latin-1", "replace")
+    if " HTTP/" not in first:          # not the start of a request (mid-stream write)
+        return
+    st["request_line"] = first
+    for ln in lines[1:]:
+        if ln[:5].lower() == b"host:":
+            st["host"] = ln[5:].strip().decode("latin-1", "replace")
+            break
+
+
 def _peer_key(u: Udp) -> str:
     if not u.addr:
         return f"sock{u.sock:#x}"
@@ -81,7 +103,7 @@ def _peer_key(u: Udp) -> str:
 def summarize(frames: list[Frame]) -> dict:
     s: dict = {"counts": {}, "addresses": {}, "sig_missing": [], "hook_failed": [],
                "apis_seen": [], "module_timeout": False, "recv_pending": 0, "peers": {},
-               "bad_records": 0}
+               "tls_streams": {}, "boot": {}, "_boot0_ns": None, "bad_records": 0}
     for f in frames:
         name = KIND_NAMES.get(f.kind, f"kind{f.kind}")
         s["counts"][name] = s["counts"].get(name, 0) + 1
@@ -89,10 +111,11 @@ def summarize(frames: list[Frame]) -> dict:
             _apply(s, f)
         except (BadRecord, struct.error, IndexError):
             s["bad_records"] += 1
-    # Phase A smoke test: harness injected, all markers resolved in the mapped
-    # image, every hook installed.
+    # Phase A smoke test: harness injected, all markers (incl. SSL_read/SSL_write)
+    # resolved in the mapped image, every hook installed.
     s["phase_a_ok"] = (len(s["addresses"]) == len(ADDRESS_KINDS) and not s["sig_missing"]
                        and not s["hook_failed"] and not s["module_timeout"])
+    s.pop("_boot0_ns", None)
     return s
 
 
@@ -102,7 +125,9 @@ def _apply(s: dict, f: Frame) -> None:
     elif f.kind == 251:
         s["sig_missing"].append(TARGET_NAMES[f.payload[0]] if f.payload[0] < len(TARGET_NAMES) else f.payload[0])
     elif f.kind == 252:
-        s["hook_failed"].append(API_NAMES[f.payload[0]] if f.payload[0] < len(API_NAMES) else f.payload[0])
+        fid = f.payload[0]
+        name = API_NAMES[fid] if fid < len(API_NAMES) else TLS_API_NAMES.get(fid, fid)
+        s["hook_failed"].append(name)
     elif f.kind == 30:
         s["apis_seen"].append(API_NAMES[f.payload[0]] if f.payload[0] < len(API_NAMES) else f.payload[0])
     elif f.kind == 31:
@@ -119,3 +144,21 @@ def _apply(s: dict, f: Frame) -> None:
                                                  "recv_pkts": 0, "recv_bytes": 0})
         p[f"{d}_pkts"] += 1
         p[f"{d}_bytes"] += u.orig_len
+    elif f.kind == 1:
+        stage = f.payload[0]
+        if stage == 0 and s["_boot0_ns"] is None:
+            s["_boot0_ns"] = f.ts_ns
+        base = s["_boot0_ns"]
+        s["boot"][stage] = 0.0 if base is None else round((f.ts_ns - base) / 1e9, 3)
+    elif f.kind in (22, 23):
+        if len(f.payload) < 8:
+            raise BadRecord(f"tls frame of {len(f.payload)} bytes")
+        (ssl,) = struct.unpack_from("<Q", f.payload, 0)
+        body = f.payload[8:]
+        st = s["tls_streams"].setdefault(
+            ssl, {"out_bytes": 0, "in_bytes": 0, "request_line": None, "host": None})
+        if f.kind == 22:          # tls_write: client -> server
+            st["out_bytes"] += len(body)
+            _note_request(st, body)
+        else:
+            st["in_bytes"] += len(body)
