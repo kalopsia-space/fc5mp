@@ -9,6 +9,7 @@
 #include "capture/udp_frame.hpp"
 #include "hookcore/hookcore.hpp"
 #include "overlapped.hpp"
+#include "redirect.hpp"
 #include "sink.hpp"
 namespace fc5mp::net {
 namespace {
@@ -83,13 +84,21 @@ GetOverlappedResult_t o_GetOverlappedResult = nullptr;
 
 int WSAAPI d_sendto(SOCKET s, const char* buf, int len, int flags, const sockaddr* to, int tolen){
   Reentry g;   // set before the call, so nested hooked calls pass through
+  const sockaddr* orig_to = to;
+  sockaddr_storage rw;
+  if(redirect::active() && to && (size_t)tolen <= sizeof(rw) &&
+     tolen >= (int)sizeof(sockaddr_in)){
+    std::memcpy(&rw, to, (size_t)tolen);
+    if(redirect::maybe_rewrite_dest((sockaddr*)&rw, tolen))
+      to = (const sockaddr*)&rw;
+  }
   int r = o_sendto(s, buf, len, flags, to, tolen);
   DWORD err = GetLastError();
   if(g.active){
     seen(API_SENDTO);
     if(r >= 0){                              // 0-byte datagrams are real too
       cap::Span sp{(const uint8_t*)buf, (size_t)len};
-      emit(cap::kind::UDP_SEND, s, to, tolen, &sp, 1, (size_t)r);
+      emit(cap::kind::UDP_SEND, s, orig_to, tolen, &sp, 1, (size_t)r);
     }
   }
   SetLastError(err);
@@ -115,13 +124,21 @@ int WSAAPI d_WSASendTo(SOCKET s, LPWSABUF bufs, DWORD n, LPDWORD sent, DWORD fla
                        const sockaddr* to, int tolen, LPWSAOVERLAPPED ov,
                        LPWSAOVERLAPPED_COMPLETION_ROUTINE cr){
   Reentry g;
+  const sockaddr* orig_to = to;
+  sockaddr_storage rw;
+  if(redirect::active() && to && (size_t)tolen <= sizeof(rw) &&
+     tolen >= (int)sizeof(sockaddr_in)){
+    std::memcpy(&rw, to, (size_t)tolen);
+    if(redirect::maybe_rewrite_dest((sockaddr*)&rw, tolen))
+      to = (const sockaddr*)&rw;
+  }
   // Encode BEFORE the call: with overlapped I/O, once the original returns a
   // completion worker may already own (re-arm/free) the buffers.
   std::vector<uint8_t> rec;
   if(g.active){
     auto v = spans(bufs, n);
     size_t total = 0; for(auto& sp : v) total += sp.n;
-    rec = record(s, to, tolen, v.data(), v.size(), total);
+    rec = record(s, orig_to, tolen, v.data(), v.size(), total);
   }
   int r = o_WSASendTo(s, bufs, n, sent, flags, to, tolen, ov, cr);
   DWORD err = GetLastError();

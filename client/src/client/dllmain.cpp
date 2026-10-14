@@ -5,6 +5,7 @@
 #include "hookcore/hookcore.hpp"
 #include "targets.hpp"
 #include "net_hooks.hpp"
+#include "redirect.hpp"
 #include "sink.hpp"
 #include "capture/kinds.hpp"
 #include <cstdint>
@@ -27,6 +28,7 @@ static DWORD WINAPI Boot(LPVOID){
   boot_mark(0);                     // boot thread start (before the ~hashing wait)
   if(!fc5mp::client::build_supported(hash_fc_module())) return 0;  // self-disable
   boot_mark(1);                     // version-lock passed
+  fc5mp::redirect::load();           // redirect config (no-op if file absent)
   if(!fc5mp::hook::init()) return 0;
   fc5mp::net::install();
   fc5mp::hook::enable_all();        // UDP capture live now, not after FC_m64 maps

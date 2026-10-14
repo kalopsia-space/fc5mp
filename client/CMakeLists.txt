@@ -32,6 +32,7 @@ if(CMAKE_SYSTEM_NAME STREQUAL "Windows")
     src/capture/udp_frame.cpp
     src/client/sink.cpp
     src/client/net_hooks.cpp
+    src/client/redirect.cpp
     src/client/overlapped.cpp
     src/client/tls_hooks.cpp
     src/capture/redact.cpp
@@ -44,14 +45,16 @@ if(CMAKE_SYSTEM_NAME STREQUAL "Windows")
   # Windows integration test for the ws2_32 detours; run under Wine:
   #   wine build-win/test_net_hooks.exe
   add_executable(test_net_hooks tests/win/test_net_hooks.cpp
-    src/client/net_hooks.cpp src/client/overlapped.cpp src/client/sink.cpp
+    src/client/net_hooks.cpp src/client/redirect.cpp src/client/overlapped.cpp
+    src/client/sink.cpp
     src/capture/record.cpp src/capture/udp_frame.cpp src/hookcore/hookcore.cpp)
   target_include_directories(test_net_hooks PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}/src ${minhook_SOURCE_DIR}/include)
   target_link_libraries(test_net_hooks PRIVATE minhook ws2_32)
 
   add_executable(test_overlapped_hooks tests/win/test_overlapped_hooks.cpp
-    src/client/net_hooks.cpp src/client/overlapped.cpp src/client/sink.cpp
+    src/client/net_hooks.cpp src/client/redirect.cpp src/client/overlapped.cpp
+    src/client/sink.cpp
     src/capture/record.cpp src/capture/udp_frame.cpp src/hookcore/hookcore.cpp)
   target_include_directories(test_overlapped_hooks PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}/src ${minhook_SOURCE_DIR}/include)
@@ -83,6 +86,9 @@ else()
   target_compile_options(test_redact PRIVATE -fsanitize=address,undefined)
   target_link_options(test_redact PRIVATE -fsanitize=address,undefined)
   add_test(NAME redact COMMAND test_redact)
+  add_executable(test_redirect tests/host/test_redirect.cpp src/client/redirect.cpp)
+  target_include_directories(test_redirect PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src)
+  add_test(NAME redirect COMMAND test_redirect)
   add_executable(test_overlapped tests/host/test_overlapped.cpp src/client/overlapped.cpp)
   target_include_directories(test_overlapped PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src)
   add_test(NAME overlapped COMMAND test_overlapped)
