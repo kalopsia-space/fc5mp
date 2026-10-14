@@ -1,6 +1,6 @@
 # fc5mp — Project Handoff (everything a future session needs)
 
-**Last updated:** 2026-10-14 (P1.5b). **Repo:** `/home/kalopsia/fc5mp` (git, branch `main`, no remote).
+**Last updated:** 2026-10-14 (P1.5c + first live host capture decoded). **Repo:** `/home/kalopsia/fc5mp` (git, branch `main`, no remote).
 **User:** kalopsia (neosquared2002@gmail.com). Machine: Arch Linux, AMD 7900 XTX, plays games on this box.
 
 Read this top to bottom before touching anything. It is the single source of truth; the
@@ -378,7 +378,50 @@ Launch-option template the script prints:
 P0 proved it's probably feasible (player storage is a dynamic vector, no hardwired 2). P1 built and
 tested the injected-client harness (version.dll proxy + signature scanner + version-lock + capture
 writer), merged to `main`. P1.5a added **UDP traffic capture** (Wine-tested) + `capdump`; P1.5b
-added **TLS plaintext capture** on the static OpenSSL inside FC_m64 (Wine-tested, redacted, §6b).
-Phase A smoke test passed solo (§6a). Next: the user runs two short co-op sessions (host, then guest — friend needs no setup) to capture
-the protocol, which we decode to build the Rust replacement server (P2). If writes/builds suddenly
-fail, the session is in auto mode and the safety classifier is blocking — have the user turn it off.
+added **TLS plaintext capture** on the static OpenSSL inside FC_m64 (Wine-tested, redacted, §6b);
+P1.5c added **overlapped-recv capture** via a kernel32 `GetOverlappedResult` detour (§6).
+Phase A smoke test passed solo (§6a). **First live host co-op capture done + decoded** →
+`docs/research/2026-10-14-host-capture-protocol-map.md`: **FC5 co-op is Quazal Rendezvous
+(NEX/PRUDP v0)** on UDP :6570 + UbiServices REST + Storm + P2P :9000. Next: one co-op session to
+re-capture host + capture guest with the complete harness, then build the Rust replacement
+server (P2). If writes/builds suddenly fail, the session is in auto mode and the safety classifier
+is blocking — have the user turn it off.
+
+## 11. Session-end state 2026-10-14 (START HERE next session)
+
+**Everything is committed to `main`; working tree clean; no open branches.** `git log --oneline -8`
+shows the P1.5c commits ending at merge `505bcde`.
+
+**Done this session:** P1.5b (TLS) merged; first live **host** capture
+(`~/.fc5mp/captures/session-host-20261014-011117.bin`, 26 MB — **sensitive, local only, not in
+git**) decoded into the protocol map; P1.5c (overlapped-recv) built + reviewed + merged. A failed
+guest capture attempt (friend left before connecting) was deleted.
+
+**The single open question** is live-only and needs the friend: does P1.5c actually capture the
+PRUDP `:6570` server→client traffic in-game? It's Wine-verified but the proof is the next host
+capture showing the `203.132.26.146:6570` peer with **recv pkts > 0** (was 0). The hook choice
+(`GetOverlappedResult`) is backed by FC_m64's import table, so this is expected to work.
+
+**Next actions, in order:**
+1. **One friend co-op session, harness already staged logic in `scripts/launch-capture.sh`:**
+   - `scripts/launch-capture.sh host` → set the printed Steam launch option → user hosts, friend
+     joins, play ~10-15 min (menu→create session→friend joins→move/drive→objective→fast-travel→
+     die/revive) → quit. **This re-capture gets the PRUDP responses + create-session RMCs.**
+   - Then `scripts/launch-capture.sh guest` → new launch option → user joins friend's game (the
+     **join flow**) → play → quit.
+   - After each: `cd analysis && uv run python capdump.py <cap.bin>` — **first check `:6570` recv
+     pkts > 0**; `--dump DIR` writes per-stream bins.
+2. **If `:6570` recv is captured:** decode the PRUDP/NEX RMC exchange (create/register/join
+   session) → extend the protocol map → the join-flow half.
+3. **P2 can start in parallel now (no friend needed):** UbiServices REST emulation (login ticket,
+   `/rendezvous/configuration` + `/v1/router/19` serving OUR PRUDP endpoint + public key) and a
+   PRUDP v0 + NEX RMC server skeleton. We issue the Quazal Kerberos ticket, so we own the RC4
+   session key and can decrypt our own client's RMC calls for validation. Rust (per the spec).
+
+**Rebuild before any capture** (DLL must carry P1.5c): `cd client && cmake --build build-win`,
+then the launch script stages `build-win/{version.dll,fc5mp-client.dll}` beside the game.
+
+**Harness capabilities now:** resolves markers in the mapped FC_m64; captures UDP (sendto/recvfrom/
+WSASendTo/WSARecvFrom incl. overlapped completions via GetOverlappedResult) + TLS plaintext
+(SSL_read/SSL_write, creds redacted) + BOOT timing. Does NOT: redact gzip/wss bodies; decode the
+encrypted PRUDP/P2P payloads (expected — we get the key when we run the server).
