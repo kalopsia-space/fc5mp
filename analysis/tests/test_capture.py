@@ -115,3 +115,9 @@ def test_tls_frame_too_short_counted_bad():
     frames, _ = parse(frame(22, b"\x01\x02"))      # < 8 bytes for the SSL* prefix
     s = summarize(frames)
     assert s["bad_records"] == 1 and not s["tls_streams"]
+
+
+def test_hook_failed_names_getoverlappedresult():
+    frames, _ = parse(frame(252, b"\x06"))          # HOOK_FAILED id 6
+    s = summarize(frames)
+    assert s["hook_failed"] == ["GetOverlappedResult"]

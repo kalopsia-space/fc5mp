@@ -24,8 +24,9 @@ ADDRESS_KINDS = {10: "rdv_createsession", 11: "create_coop_leash", 12: "do_spawn
 # index order of client/src/client/targets.cpp table()
 TARGET_NAMES = ["rdv_createsession", "create_coop_leash", "do_spawn_player", "ssl_read", "ssl_write"]
 API_NAMES = ["sendto", "recvfrom", "WSASendTo", "WSARecvFrom"]
-# tls_hooks.hpp Api ids (HOOK_FAILED payload for the TLS detours)
-TLS_API_NAMES = {4: "SSL_read", 5: "SSL_write"}
+# HOOK_FAILED api ids beyond the ws2_32 table (API_NAMES, 0-3): 4-5 TLS
+# (tls_hooks.hpp), 6 GetOverlappedResult (net_hooks.hpp, P1.5c).
+TLS_API_NAMES = {4: "SSL_read", 5: "SSL_write", 6: "GetOverlappedResult"}
 BOOT_STAGES = {0: "boot_start", 1: "version_lock", 2: "udp_hooks", 3: "tls_hooks"}
 
 _HDR = struct.Struct("<QBI")
