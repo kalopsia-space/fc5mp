@@ -9,7 +9,8 @@ async fn login_returns_session_ticket() {
 
     let state = fc5mp_server::state::ServerState::new(4);
     let config = fc5mp_server::config::Config::default();
-    let app = fc5mp_server::rest::router(state, &config);
+    let kerberos = fc5mp_server::prudp::kerberos::KerberosServer::new();
+    let app = fc5mp_server::rest::router(state, &config, kerberos);
     tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
 
     let resp = Client::new()

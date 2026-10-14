@@ -49,7 +49,7 @@ pub async fn rendezvous_config(State(ctx): State<RestContext>) -> Json<Value> {
         "prudp_loadbalancer_url": prudp_url,
         "prudp_urls": [],
         "http_loadbalancer_url": "",
-        "public_key": crate::prudp::kerberos::public_key_blob_b64(),
+        "public_key": ctx.kerberos.public_key_blob_b64(),
     }))
 }
 

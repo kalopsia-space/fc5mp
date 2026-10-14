@@ -13,7 +13,8 @@ async fn rendezvous_config_returns_our_prudp_address() {
         prudp_port: 6570,
         ..Default::default()
     };
-    let app = fc5mp_server::rest::router(state, &config);
+    let kerberos = fc5mp_server::prudp::kerberos::KerberosServer::new();
+    let app = fc5mp_server::rest::router(state, &config, kerberos);
     tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
 
     let resp = Client::new()
@@ -26,7 +27,7 @@ async fn rendezvous_config_returns_our_prudp_address() {
         body["prudp_loadbalancer_url"],
         "prudp:/address=10.0.0.5;port=6570"
     );
-    assert!(body["public_key"].as_str().unwrap().len() > 0);
+    assert!(body["public_key"].as_str().unwrap().starts_with("RUNT"));
 }
 
 #[tokio::test]
@@ -36,7 +37,8 @@ async fn storm_router_returns_address() {
 
     let state = fc5mp_server::state::ServerState::new(4);
     let config = fc5mp_server::config::Config::default();
-    let app = fc5mp_server::rest::router(state, &config);
+    let kerberos = fc5mp_server::prudp::kerberos::KerberosServer::new();
+    let app = fc5mp_server::rest::router(state, &config, kerberos);
     tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
 
     let resp = Client::new()
