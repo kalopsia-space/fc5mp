@@ -11,6 +11,13 @@ static PendingRecv mk(uint64_t sock){
 int main(){
   PendingRecvs reg;
   int k1 = 0, k2 = 0;                         // distinct OVERLAPPED* stand-ins
+  // lock-free fast path: empty_hint() is true when nothing is in flight, so the
+  // GetOverlappedResult detour can skip the mutex on the common file-I/O reap
+  assert(reg.empty_hint());
+  reg.record(&k2, mk(0x99));
+  assert(!reg.empty_hint());                   // something in flight
+  (void)reg.take(&k2);
+  assert(reg.empty_hint());                    // drained
   // record then take returns it; a second take is empty
   reg.record(&k1, mk(0x11));
   assert(reg.size() == 1);

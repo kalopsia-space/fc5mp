@@ -1,4 +1,5 @@
 #pragma once
+#include <atomic>
 #include <cstdint>
 #include <cstddef>
 #include <mutex>
@@ -29,9 +30,15 @@ public:
   void record(const void* ov, PendingRecv e);     // overwrite if ov already present
   std::optional<PendingRecv> take(const void* ov); // remove + return, or nullopt
   size_t size() const;
+  // Lock-free "nothing in flight" hint. When true, a caller can skip take()
+  // (and its mutex) entirely — the common case for GetOverlappedResult reaps of
+  // non-socket I/O while no overlapped recv is outstanding. Never false-empty:
+  // the counter is bumped before the map under the same lock.
+  bool empty_hint() const { return count_.load(std::memory_order_acquire) == 0; }
 private:
   mutable std::mutex m_;
   std::unordered_map<const void*, PendingRecv> map_;
+  std::atomic<size_t> count_{0};
   uint64_t next_seq_ = 0;
 };
 }

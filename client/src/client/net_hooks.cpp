@@ -176,7 +176,10 @@ BOOL WINAPI d_GetOverlappedResult(HANDLE h, LPOVERLAPPED ov, LPDWORD xfer, BOOL 
   Reentry g;
   BOOL ok = o_GetOverlappedResult(h, ov, xfer, wait);
   DWORD err = GetLastError();
-  if(g.active && ok && ov){
+  // Fast path: this detour sees every overlapped reap in the process (incl. the
+  // game's file/asset streaming). Skip the lookup + its mutex unless an
+  // overlapped recv is actually outstanding.
+  if(g.active && ok && ov && !g_pending.empty_hint()){
     if(auto e = g_pending.take(ov)){
       // Guard against OVERLAPPED* reuse for non-socket I/O: only log if this
       // reap is on the same handle the recv was posted on.

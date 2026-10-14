@@ -11,6 +11,7 @@ void PendingRecvs::record(const void* ov, PendingRecv e){
       if(it->second.seq < oldest->second.seq) oldest = it;
     map_.erase(oldest);
   }
+  count_.store(map_.size(), std::memory_order_release);
 }
 std::optional<PendingRecv> PendingRecvs::take(const void* ov){
   std::lock_guard<std::mutex> g(m_);
@@ -18,6 +19,7 @@ std::optional<PendingRecv> PendingRecvs::take(const void* ov){
   if(it == map_.end()) return std::nullopt;
   PendingRecv e = std::move(it->second);
   map_.erase(it);
+  count_.store(map_.size(), std::memory_order_release);
   return e;
 }
 size_t PendingRecvs::size() const {
