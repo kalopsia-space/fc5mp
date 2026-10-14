@@ -1,4 +1,5 @@
 use std::net::SocketAddr;
+use super::rc4::Rc4;
 use super::transport::{Packet, PacketType, FLAG_ACK, FLAG_NEED_ACK};
 
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -17,6 +18,8 @@ pub struct Connection {
     pub client_signature: u32,
     pub client_sequence: u16,
     pub server_sequence: u16,
+    pub rc4_recv: Option<Rc4>,
+    pub rc4_send: Option<Rc4>,
 }
 
 impl Connection {
@@ -29,6 +32,8 @@ impl Connection {
             client_signature: 0,
             client_sequence: 0,
             server_sequence: 0,
+            rc4_recv: None,
+            rc4_send: None,
         }
     }
 

@@ -1,5 +1,6 @@
 pub mod connection;
 pub mod kerberos;
+pub mod rc4;
 pub mod rmc;
 pub mod transport;
 
@@ -7,7 +8,7 @@ use std::collections::HashMap;
 use std::net::SocketAddr;
 use tokio::net::UdpSocket;
 use connection::{Connection, Phase};
-use transport::{Packet, PacketType, FLAG_NEED_ACK};
+use transport::{Packet, PacketType, FLAG_NEED_ACK, FLAG_RELIABLE, FLAG_HAS_SIZE};
 
 pub async fn run(addr: SocketAddr) -> anyhow::Result<()> {
     let sock = UdpSocket::bind(addr).await?;
@@ -41,14 +42,36 @@ pub async fn run(addr: SocketAddr) -> anyhow::Result<()> {
             PacketType::Connect => conn.handle_connect(&pkt),
             PacketType::Data => {
                 if conn.phase == Phase::Connected {
-                    tracing::info!(
-                        %peer, seq = pkt.sequence, payload_len = pkt.payload.len(),
-                        "DATA received (RMC dispatch will go here)"
-                    );
-                    if pkt.flags & FLAG_NEED_ACK != 0 {
-                        Some(conn.make_ack(pkt.sequence, pkt.dest, pkt.source))
-                    } else {
-                        None
+                    let mut decrypted = pkt.payload.clone();
+                    if let Some(ref mut cipher) = conn.rc4_recv {
+                        cipher.apply(&mut decrypted);
+                    }
+                    match rmc::RmcRequest::decode(&decrypted) {
+                        Ok(req) => {
+                            let resp_data = rmc::encode_error(req.call_id, req.protocol_id, 0x00010001);
+                            let mut encrypted = resp_data;
+                            if let Some(ref mut cipher) = conn.rc4_send {
+                                cipher.apply(&mut encrypted);
+                            }
+                            let seq = conn.next_server_sequence();
+                            Some(Packet {
+                                source: pkt.dest, dest: pkt.source,
+                                packet_type: PacketType::Data,
+                                flags: FLAG_RELIABLE | FLAG_NEED_ACK | FLAG_HAS_SIZE,
+                                session_id: conn.session_id,
+                                signature: conn.server_signature,
+                                sequence: seq,
+                                payload: encrypted,
+                            })
+                        }
+                        Err(e) => {
+                            tracing::warn!(%peer, %e, "failed to decode RMC");
+                            if pkt.flags & FLAG_NEED_ACK != 0 {
+                                Some(conn.make_ack(pkt.sequence, pkt.dest, pkt.source))
+                            } else {
+                                None
+                            }
+                        }
                     }
                 } else {
                     tracing::warn!(%peer, "DATA before CONNECT, ignoring");
