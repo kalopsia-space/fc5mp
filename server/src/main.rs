@@ -33,8 +33,9 @@ async fn main() -> anyhow::Result<()> {
     });
 
     let prudp_addr = std::net::SocketAddr::new(cfg.listen_ip, cfg.prudp_port);
+    let kerberos_prudp = kerberos.clone();
     tokio::spawn(async move {
-        if let Err(e) = fc5mp_server::prudp::run(prudp_addr).await {
+        if let Err(e) = fc5mp_server::prudp::run(prudp_addr, kerberos_prudp).await {
             tracing::error!(%e, "PRUDP server error");
         }
     });

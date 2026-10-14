@@ -6,11 +6,13 @@ pub mod transport;
 
 use std::collections::HashMap;
 use std::net::SocketAddr;
+use std::sync::Arc;
 use tokio::net::UdpSocket;
 use connection::{Connection, Phase};
+use kerberos::KerberosServer;
 use transport::{Packet, PacketType, FLAG_NEED_ACK, FLAG_RELIABLE, FLAG_HAS_SIZE};
 
-pub async fn run(addr: SocketAddr) -> anyhow::Result<()> {
+pub async fn run(addr: SocketAddr, kerberos: Arc<KerberosServer>) -> anyhow::Result<()> {
     let sock = UdpSocket::bind(addr).await?;
     tracing::info!(%addr, "PRUDP server listening");
     let mut buf = [0u8; 2048];
@@ -18,7 +20,13 @@ pub async fn run(addr: SocketAddr) -> anyhow::Result<()> {
     let checksum_key: u32 = 0;
 
     loop {
-        let (len, peer) = sock.recv_from(&mut buf).await?;
+        let (len, peer) = match sock.recv_from(&mut buf).await {
+            Ok(v) => v,
+            Err(e) => {
+                tracing::warn!(%e, "PRUDP recv error (transient), continuing");
+                continue;
+            }
+        };
         let data = &buf[..len];
 
         let pkt = match Packet::decode(data, checksum_key) {
@@ -35,11 +43,35 @@ pub async fn run(addr: SocketAddr) -> anyhow::Result<()> {
             "PRUDP <- recv"
         );
 
+        if pkt.packet_type == PacketType::Syn {
+            if let Some(old) = connections.get(&peer) {
+                if old.phase != Phase::AwaitingSyn {
+                    tracing::info!(%peer, old_phase = ?old.phase, "SYN from known peer, resetting connection");
+                    connections.insert(peer, Connection::new(peer));
+                }
+            }
+        }
+
         let conn = connections.entry(peer).or_insert_with(|| Connection::new(peer));
 
         let response = match pkt.packet_type {
             PacketType::Syn => conn.handle_syn(&pkt),
-            PacketType::Connect => conn.handle_connect(&pkt),
+            PacketType::Connect => {
+                let resp = conn.handle_connect(&pkt);
+                if conn.phase == Phase::Connected && !pkt.payload.is_empty() {
+                    match kerberos.process_ticket(&pkt.payload) {
+                        Ok(keys) => {
+                            conn.rc4_recv = Some(rc4::Rc4::new(&keys.rc4_key));
+                            conn.rc4_send = Some(rc4::Rc4::new(&keys.rc4_key));
+                            tracing::info!(%peer, "RC4 session keys established");
+                        }
+                        Err(e) => {
+                            tracing::warn!(%peer, %e, "failed to process Kerberos ticket");
+                        }
+                    }
+                }
+                resp
+            }
             PacketType::Data => {
                 if conn.phase == Phase::Connected {
                     let mut decrypted = pkt.payload.clone();
@@ -100,7 +132,9 @@ pub async fn run(addr: SocketAddr) -> anyhow::Result<()> {
                 %peer, typ = %resp.packet_type, seq = resp.sequence, len = out.len(),
                 "PRUDP -> send"
             );
-            sock.send_to(&out, peer).await?;
+            if let Err(e) = sock.send_to(&out, peer).await {
+                tracing::warn!(%peer, %e, "PRUDP send error");
+            }
         }
     }
 }
