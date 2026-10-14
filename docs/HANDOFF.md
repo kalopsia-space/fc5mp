@@ -55,8 +55,16 @@ fixed 2-slot arrays) and the fact that Versus already runs the same lower netcod
    detours on the static OpenSSL `SSL_read`/`SSL_write` inside `FC_m64.dll` now log redacted
    plaintext (§6b). The remaining verification is live: Phase A/B will show whether login traffic
    predates the hooks (BOOT markers make that visible).
-3. **Phase B live capture** — the real thing (§7). Needs the friend. UDP + TLS both capture now.
-4. Decode captures → protocol map → start P2 (the server).
+3. ~~Phase B live capture~~ **host half DONE 2026-10-14** (`session-host-20261014-011117.bin`,
+   26 MB, TLS working, creds verified masked). Guest half still pending the friend. Protocol
+   decoded → **`docs/research/2026-10-14-host-capture-protocol-map.md`**.
+4. **P1.5c — overlapped-recv capture (NOW THE BLOCKER).** The capture proved FC5 co-op is
+   **Quazal Rendezvous (NEX/PRUDP v0)** on UDP :6570, but that socket's server→client traffic uses
+   overlapped `WSARecvFrom` — the one flow we must read to map the matchmaking RMCs, and the one
+   the harness drops. Implement completion-side capture (hook `WSAGetOverlappedResult` /
+   `GetQueuedCompletionStatus` keyed by the `OVERLAPPED*`), then re-capture.
+5. Start P2 on the unblocked parts: UbiServices REST emulation + a PRUDP/NEX server skeleton (we
+   issue the Kerberos ticket, so we own the RC4 key). See the protocol map for the split.
 
 ---
 
@@ -332,8 +340,10 @@ Launch-option template the script prints:
 
 - ~~Does on-disk == mapped bytes under Denuvo?~~ **Yes for the 3 marker sites** (Phase A). Not
   proven for every region; keep checking new signatures live.
-- **Overlapped-recv gap:** only the `:6570` socket uses it at the menu. If Phase B's P2P socket
-  does too, the receive side of P2P is lost, so add completion-side capture first (§6).
+- **Overlapped-recv gap → now a confirmed blocker (P1.5c).** The `:6570` socket IS the Quazal
+  Rendezvous (PRUDP) endpoint; its server→client PRUDP is overlapped-recv, so we have the client's
+  matchmaking RMCs (encrypted) but none of the responses. P2P (`:9000`) recv is captured fine via
+  inline completion, so the gap is specifically the PRUDP socket. Fix before further capture.
 - **Join flow:** how a guest triggers joining in-game isn't mapped yet (Phase B guest capture
   answers this). Fallback if the in-game flow is unusable: call `CJoinStormSessionOperation`
   directly from the client.
