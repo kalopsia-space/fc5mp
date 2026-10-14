@@ -24,7 +24,7 @@ async fn main() -> anyhow::Result<()> {
 
     let state = ServerState::new(cfg.max_players);
     let rest_addr = std::net::SocketAddr::new(cfg.listen_ip, cfg.rest_port);
-    let app = fc5mp_server::rest::router(state.clone());
+    let app = fc5mp_server::rest::router(state.clone(), &cfg);
     let listener = tokio::net::TcpListener::bind(rest_addr).await?;
     tracing::info!(%rest_addr, "REST server listening");
     tokio::spawn(async move {

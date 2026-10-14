@@ -4,16 +4,16 @@ use axum::Json;
 use serde_json::{json, Value};
 use uuid::Uuid;
 
-use crate::state::ServerState;
+use super::RestContext;
 
-pub async fn login(State(state): State<ServerState>) -> (StatusCode, Json<Value>) {
+pub async fn login(State(ctx): State<RestContext>) -> (StatusCode, Json<Value>) {
     let profile_id = Uuid::new_v4();
     let session_id = Uuid::new_v4();
     let session_key = base64_rand(32);
     let ticket = base64_rand(64);
 
     let name = format!("fc5mp-player-{}", &profile_id.to_string()[..8]);
-    if let Err(e) = state.add_player(profile_id, name.clone()) {
+    if let Err(e) = ctx.state.add_player(profile_id, name.clone()) {
         tracing::error!(%e, "login failed");
         return (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error": e.to_string()})));
     }
@@ -36,6 +36,25 @@ pub async fn login(State(state): State<ServerState>) -> (StatusCode, Json<Value>
         "clientIpCountry": "XX",
     });
     (StatusCode::OK, Json(body))
+}
+
+pub async fn rendezvous_config(State(ctx): State<RestContext>) -> Json<Value> {
+    let prudp_url = format!(
+        "prudp:/address={};port={}",
+        ctx.prudp_host, ctx.prudp_port
+    );
+    tracing::info!(%prudp_url, "serving rendezvous configuration");
+    Json(json!({
+        "http_urls": [],
+        "prudp_loadbalancer_url": prudp_url,
+        "prudp_urls": [],
+        "http_loadbalancer_url": "",
+        "public_key": crate::prudp::kerberos::public_key_blob_b64(),
+    }))
+}
+
+pub async fn storm_router() -> Json<Value> {
+    Json(json!({"router": "127.0.0.1:12000"}))
 }
 
 fn base64_rand(len: usize) -> String {

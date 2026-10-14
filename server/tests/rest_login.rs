@@ -8,7 +8,8 @@ async fn login_returns_session_ticket() {
     let addr = listener.local_addr().unwrap();
 
     let state = fc5mp_server::state::ServerState::new(4);
-    let app = fc5mp_server::rest::router(state);
+    let config = fc5mp_server::config::Config::default();
+    let app = fc5mp_server::rest::router(state, &config);
     tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
 
     let resp = Client::new()
