@@ -31,6 +31,13 @@ async fn main() -> anyhow::Result<()> {
         axum::serve(listener, app).await.unwrap();
     });
 
+    let prudp_addr = std::net::SocketAddr::new(cfg.listen_ip, cfg.prudp_port);
+    tokio::spawn(async move {
+        if let Err(e) = fc5mp_server::prudp::run(prudp_addr).await {
+            tracing::error!(%e, "PRUDP server error");
+        }
+    });
+
     tracing::info!("server ready");
     tokio::signal::ctrl_c().await?;
     tracing::info!("shutting down");
