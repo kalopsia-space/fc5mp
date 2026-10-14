@@ -99,7 +99,14 @@ our server replaces Storm or we relay it.
 then a header (`…8000 0000 2010 4500 0002`). This is the actual co-op gameplay stream (the P5
 widening target) — opaque for now; decoding needs a pre-encryption client tap, deferred.
 
-## Gap that now blocks progress: overlapped `WSARecvFrom` recv capture
+## Gap — RESOLVED by P1.5c (validation pending next capture)
+
+> **Update 2026-10-14:** P1.5c added overlapped-recv capture (hooks kernel32 `GetOverlappedResult`,
+> the only completion-reap API FC_m64 imports). The next host capture should show the `:6570` peer
+> with recv pkts > 0; until then the fix is Wine-verified but not confirmed in-game. Original
+> analysis below.
+
+### Original gap: overlapped `WSARecvFrom` recv capture
 
 The Rendezvous **server→client** PRUDP is the one flow we must read to map the join/create-session
 RMCs, and it is exactly the traffic the harness drops (overlapped `WSARecvFrom` on the `:6570`

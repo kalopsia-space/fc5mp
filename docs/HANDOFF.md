@@ -58,12 +58,13 @@ fixed 2-slot arrays) and the fact that Versus already runs the same lower netcod
 3. ~~Phase B live capture~~ **host half DONE 2026-10-14** (`session-host-20261014-011117.bin`,
    26 MB, TLS working, creds verified masked). Guest half still pending the friend. Protocol
    decoded → **`docs/research/2026-10-14-host-capture-protocol-map.md`**.
-4. **P1.5c — overlapped-recv capture (NOW THE BLOCKER).** The capture proved FC5 co-op is
-   **Quazal Rendezvous (NEX/PRUDP v0)** on UDP :6570, but that socket's server→client traffic uses
-   overlapped `WSARecvFrom` — the one flow we must read to map the matchmaking RMCs, and the one
-   the harness drops. Implement completion-side capture (hook `WSAGetOverlappedResult` /
-   `GetQueuedCompletionStatus` keyed by the `OVERLAPPED*`), then re-capture.
-5. Start P2 on the unblocked parts: UbiServices REST emulation + a PRUDP/NEX server skeleton (we
+4. ~~P1.5c — overlapped-recv capture.~~ **DONE 2026-10-14** (Wine-tested; plan
+   `2026-10-14-fc5mp-p1.5c-overlapped-recv.md`). Hooks kernel32 `GetOverlappedResult` to capture
+   the PRUDP :6570 server→client traffic (§6). **Validation pending the next live capture.**
+5. **Next friend session (one sitting, harness now complete):** re-capture host (PRUDP both
+   directions + create-session RMCs) AND capture guest (join flow), back to back. First confirm
+   `:6570` recv pkts > 0 in the host capture.
+6. Start P2 on the unblocked parts: UbiServices REST emulation + a PRUDP/NEX server skeleton (we
    issue the Kerberos ticket, so we own the RC4 key). See the protocol map for the split.
 
 ---
@@ -216,13 +217,21 @@ OpenSSL `SSL_read`/`SSL_write` inside FC_m64, installed by `targets::install_all
 image is mapped and its signatures resolved. See §6b for the redaction and the sensitivity
 warning.
 
-**Does NOT yet:** (a) redact gzip-compressed or XOR-masked websocket bodies (§6b); (b) capture the data of ANY overlapped
-`WSARecvFrom` (inline-completed or pending). After the call, a completion worker may own the
-buffers, so the detour doesn't touch them. Each such call leaves a `RECV_PENDING` marker
-carrying a running count; the first 64 are logged, then every 1024th, and capdump shows the
-total. If Phase A shows many, add completion-side capture (`WSAGetOverlappedResult` /
-`GetQueuedCompletionStatus`, keyed by the OVERLAPPED pointer). Overlapped `WSASendTo` IS
-captured: its record is encoded before the call.
+**P1.5c added overlapped-recv capture** (`client/src/client/overlapped.cpp` + a
+`GetOverlappedResult` detour in `net_hooks.cpp`): each overlapped `WSARecvFrom` is recorded in a
+bounded, thread-safe registry keyed by its `OVERLAPPED*` (socket + WSABUF list + `from` out-ptr);
+when the game reaps the completion via **kernel32 `GetOverlappedResult`** (the only reap API
+FC_m64 imports — no IOCP/`WSAGetOverlappedResult`/completion routines), the detour logs the
+delivered bytes as a normal `UDP_RECV` frame. A handle-match guard (`hFile` == recorded socket)
+prevents mislabelling reused `OVERLAPPED`s from file I/O; unknown `OVERLAPPED`s pass through.
+`RECV_PENDING` markers are still emitted as the "issued" diagnostic. Wine-tested
+(`test_overlapped_hooks.exe`). **Validation pending:** the next live host capture should show the
+`:6570` PRUDP peer with `recv` pkts > 0 (was 0).
+
+**Does NOT yet:** (a) redact gzip-compressed or XOR-masked websocket bodies (§6b); (b) capture
+overlapped recvs reaped some way *other* than `GetOverlappedResult` — none expected (import table),
+but if a future build adds IOCP/completion routines those would need their own detour. Overlapped
+`WSASendTo` IS captured: its record is encoded before the call.
 
 **Capture file format** (`capture/record.{hpp,cpp}`): append-only frames, little-endian:
 `[u64 ts_ns][u8 kind][u32 len][len bytes]`. Current kinds: 10=rdv_createsession addr,
@@ -340,10 +349,11 @@ Launch-option template the script prints:
 
 - ~~Does on-disk == mapped bytes under Denuvo?~~ **Yes for the 3 marker sites** (Phase A). Not
   proven for every region; keep checking new signatures live.
-- **Overlapped-recv gap → now a confirmed blocker (P1.5c).** The `:6570` socket IS the Quazal
-  Rendezvous (PRUDP) endpoint; its server→client PRUDP is overlapped-recv, so we have the client's
-  matchmaking RMCs (encrypted) but none of the responses. P2P (`:9000`) recv is captured fine via
-  inline completion, so the gap is specifically the PRUDP socket. Fix before further capture.
+- ~~Overlapped-recv gap.~~ **CLOSED by P1.5c** (hooks kernel32 `GetOverlappedResult`; §6).
+  Remaining uncertainty is live-only: confirm the next host capture shows `:6570` recv pkts > 0,
+  i.e. the game really does reap that socket via `GetOverlappedResult` (import table says it's the
+  only reap API, but that's static evidence). If recv stays 0, the game reaps the PRUDP socket some
+  other way and we'd need to find it.
 - **Join flow:** how a guest triggers joining in-game isn't mapped yet (Phase B guest capture
   answers this). Fallback if the in-game flow is unusable: call `CJoinStormSessionOperation`
   directly from the client.

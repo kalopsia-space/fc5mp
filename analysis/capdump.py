@@ -56,7 +56,9 @@ def main(argv: list[str]) -> int:
         print(f"boot: {marks}")
     print(f"UDP APIs used: {', '.join(map(str, s['apis_seen'])) or 'none'}")
     if s["recv_pending"]:
-        print(f"  overlapped WSARecvFrom calls: {s['recv_pending']} (recv data NOT captured for these)")
+        print(f"  overlapped WSARecvFrom issued: {s['recv_pending']} "
+              f"(data now captured when the game reaps via GetOverlappedResult; "
+              f"compare to each peer's recv pkts)")
     if s["bad_records"]:
         print(f"  malformed records skipped: {s['bad_records']}")
 
