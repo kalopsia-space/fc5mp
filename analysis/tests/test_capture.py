@@ -41,6 +41,7 @@ def test_summarize_peers_and_phase_a_verdict():
     peer = bytes([10, 0, 0, 2])
     frames, _ = parse(
         frame(10, struct.pack("<Q", 1)) + frame(11, struct.pack("<Q", 2)) + frame(12, struct.pack("<Q", 3))
+        + frame(13, struct.pack("<Q", 4)) + frame(14, struct.pack("<Q", 5))   # SSL_read/write resolved
         + frame(30, b"\x02")
         + frame(20, udp(1, 2, 3074, peer, b"a" * 4))
         + frame(20, udp(1, 2, 3074, peer, b"b" * 6))
@@ -75,3 +76,42 @@ def test_corrupt_records_counted_not_fatal():
     s = summarize(frames)
     assert s["bad_records"] == 3
     assert s["peers"]["1.2.3.4:80"]["send_pkts"] == 1
+
+
+def tls(ssl: int, body: bytes) -> bytes:
+    return struct.pack("<Q", ssl) + body
+
+
+def test_tls_streams_and_boot_summary():
+    req = b"POST /v3/profiles/sessions HTTP/1.1\r\nHost: public-ubiservices.ubi.com\r\n\r\n"
+    resp = b"HTTP/1.1 200 OK\r\n\r\n{\"ok\":true}"
+    frames, _ = parse(
+        frame(1, b"\x00", ts=1_000_000_000)        # boot stage 0 @ 1s
+        + frame(1, b"\x03", ts=4_500_000_000)      # boot stage 3 @ 4.5s
+        + frame(13, struct.pack("<Q", 0x1840)) + frame(14, struct.pack("<Q", 0x1850))
+        + frame(22, tls(0xAA, req))                # write on stream AA
+        + frame(23, tls(0xAA, resp))               # read on stream AA
+        + frame(22, tls(0xAA, b"more"))
+    )
+    s = summarize(frames)
+    st = s["tls_streams"][0xAA]
+    assert st["out_bytes"] == len(req) + 4 and st["in_bytes"] == len(resp)
+    assert st["request_line"] == "POST /v3/profiles/sessions HTTP/1.1"
+    assert st["host"] == "public-ubiservices.ubi.com"
+    # boot stage -> seconds since stage 0
+    assert s["boot"] == {0: 0.0, 3: 3.5}
+
+
+def test_phase_a_requires_tls_resolved():
+    # UDP/markers all good but SSL addresses absent -> not phase A complete
+    base = (frame(10, struct.pack("<Q", 1)) + frame(11, struct.pack("<Q", 2))
+            + frame(12, struct.pack("<Q", 3)))
+    assert summarize(parse(base)[0])["phase_a_ok"] is False
+    full = base + frame(13, struct.pack("<Q", 4)) + frame(14, struct.pack("<Q", 5))
+    assert summarize(parse(full)[0])["phase_a_ok"] is True
+
+
+def test_tls_frame_too_short_counted_bad():
+    frames, _ = parse(frame(22, b"\x01\x02"))      # < 8 bytes for the SSL* prefix
+    s = summarize(frames)
+    assert s["bad_records"] == 1 and not s["tls_streams"]

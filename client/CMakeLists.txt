@@ -32,6 +32,8 @@ if(CMAKE_SYSTEM_NAME STREQUAL "Windows")
     src/capture/udp_frame.cpp
     src/client/sink.cpp
     src/client/net_hooks.cpp
+    src/client/tls_hooks.cpp
+    src/capture/redact.cpp
     src/hookcore/hookcore.cpp)
   set_target_properties(fc5mp-client PROPERTIES PREFIX "" OUTPUT_NAME "fc5mp-client")
   target_include_directories(fc5mp-client PRIVATE
@@ -46,6 +48,15 @@ if(CMAKE_SYSTEM_NAME STREQUAL "Windows")
   target_include_directories(test_net_hooks PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}/src ${minhook_SOURCE_DIR}/include)
   target_link_libraries(test_net_hooks PRIVATE minhook ws2_32)
+
+  # Windows integration test for the TLS (SSL_read/SSL_write) detours; run under
+  # Wine:  wine build-win/test_tls_hooks.exe
+  add_executable(test_tls_hooks tests/win/test_tls_hooks.cpp
+    src/client/tls_hooks.cpp src/client/sink.cpp
+    src/capture/record.cpp src/capture/redact.cpp src/hookcore/hookcore.cpp)
+  target_include_directories(test_tls_hooks PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR}/src ${minhook_SOURCE_DIR}/include)
+  target_link_libraries(test_tls_hooks PRIVATE minhook)
 else()
   enable_testing()
   add_executable(test_smoke tests/host/test_smoke.cpp)
@@ -60,6 +71,10 @@ else()
   add_executable(test_sink tests/host/test_sink.cpp src/client/sink.cpp src/capture/record.cpp)
   target_include_directories(test_sink PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src)
   add_test(NAME sink COMMAND test_sink)
+  add_executable(test_redact tests/host/test_redact.cpp src/capture/redact.cpp)
+  target_compile_options(test_redact PRIVATE -fsanitize=address,undefined)
+  target_link_options(test_redact PRIVATE -fsanitize=address,undefined)
+  add_test(NAME redact COMMAND test_redact)
   add_executable(test_versionlock tests/host/test_versionlock.cpp src/client/versionlock.cpp)
   add_test(NAME versionlock COMMAND test_versionlock)
   add_executable(test_sha256 tests/host/test_sha256.cpp src/client/sha256.cpp)

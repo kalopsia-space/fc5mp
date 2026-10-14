@@ -4,6 +4,7 @@
 #if defined(_WIN32)
 #include <windows.h>
 #include "sink.hpp"
+#include "tls_hooks.hpp"
 #endif
 namespace fc5mp::targets {
 const std::vector<Target>& table(){
@@ -15,6 +16,15 @@ const std::vector<Target>& table(){
      "55 53 57 41 54 41 56 41 57 48 8D AC 24 F8 FE FF", cap::kind::COOP_LEASH},
     {"do_spawn_player",
      "48 89 E0 55 57 48 8D A8 A8 FF FF FF 48 81 EC 48 01 00 00 80 3D 46 4B E4", cap::kind::SPAWN_PLAYER},
+    // static OpenSSL 1.0.2n: `mov eax,38h; call __chkstk; sub rsp,rax;
+    // cmp [rcx+30h],0 (handshake_func); jnz; SSLerr(func, ..., line)` — the
+    // SSL_F_* code and __LINE__ tell SSL_read (0xDF, 1019) from SSL_write (0xD0, 1046)
+    {"ssl_read",
+     "B8 38 00 00 00 E8 ?? ?? ?? ?? 48 2B E0 48 83 79 30 00 75 28 BA DF 00 00 00 C7 44 24 20 FB 03 00 00",
+     cap::kind::SSL_READ_ADDR},
+    {"ssl_write",
+     "B8 38 00 00 00 E8 ?? ?? ?? ?? 48 2B E0 48 83 79 30 00 75 28 BA D0 00 00 00 C7 44 24 20 16 04 00 00",
+     cap::kind::SSL_WRITE_ADDR},
   };
   return t;
 }
@@ -53,10 +63,16 @@ void install_all(){
   auto nt  = reinterpret_cast<const IMAGE_NT_HEADERS*>(base + dos->e_lfanew);
   size_t img = nt->OptionalHeader.SizeOfImage;
   auto resolved = resolve(base, img);
+  void* ssl_read = nullptr; void* ssl_write = nullptr;
   for(const auto& pr : resolved){
     uint64_t va = reinterpret_cast<uint64_t>(base) + pr.second;   // resolved address
     w.write(table()[pr.first].kind, reinterpret_cast<const uint8_t*>(&va), sizeof(va));
+    if(table()[pr.first].kind == cap::kind::SSL_READ_ADDR)  ssl_read  = reinterpret_cast<void*>(va);
+    if(table()[pr.first].kind == cap::kind::SSL_WRITE_ADDR) ssl_write = reinterpret_cast<void*>(va);
   }
+  // Install the TLS plaintext detours on the static OpenSSL entry points.
+  // tls::install_at logs HOOK_FAILED for either address it can't resolve/hook.
+  fc5mp::tls::install_at(ssl_read, ssl_write);
   // Log any table signature NOT found in the mapped image, so a short/empty
   // capture is self-diagnosing (on-disk uniqueness is verified by the host test;
   // mapped-image presence can only be confirmed here, in the live session).
