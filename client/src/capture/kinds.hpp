@@ -13,6 +13,7 @@ constexpr uint8_t COOP_LEASH        = 11;
 constexpr uint8_t SPAWN_PLAYER      = 12;
 constexpr uint8_t SSL_READ_ADDR     = 13;
 constexpr uint8_t SSL_WRITE_ADDR    = 14;
+constexpr uint8_t SSL_CONNECT_ADDR  = 15;
 // datagram traffic (payload: udp_frame record)
 constexpr uint8_t UDP_SEND          = 20;
 constexpr uint8_t UDP_RECV          = 21;

@@ -70,7 +70,7 @@ int main(){
   _putenv_s("FC5MP_CAPTURE", cap.c_str());
 
   CHECK(fc5mp::hook::init());
-  fc5mp::tls::install_at((void*)&real_ssl_read, (void*)&real_ssl_write);
+  fc5mp::tls::install_at((void*)&real_ssl_read, (void*)&real_ssl_write, nullptr);
   CHECK(fc5mp::hook::enable_all());
 
   void* sslA = (void*)0x1111; void* sslB = (void*)0x2222;

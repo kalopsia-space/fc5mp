@@ -1,6 +1,7 @@
 #include "net_hooks.hpp"
 #if defined(_WIN32)
 #include <winsock2.h>
+#include <ws2tcpip.h>
 #include <windows.h>
 #include <atomic>
 #include <cstring>
@@ -213,6 +214,32 @@ BOOL WINAPI d_GetOverlappedResult(HANDLE h, LPOVERLAPPED ov, LPDWORD xfer, BOOL 
   SetLastError(err);
   return ok;
 }
+using getaddrinfo_t = int (WSAAPI*)(const char*, const char*, const ADDRINFOA*, PADDRINFOA*);
+using connect_t = int (WSAAPI*)(SOCKET, const sockaddr*, int);
+getaddrinfo_t o_getaddrinfo = nullptr;
+connect_t     o_connect     = nullptr;
+
+int WSAAPI d_getaddrinfo(const char* node, const char* service,
+                         const ADDRINFOA* hints, PADDRINFOA* res){
+  if(redirect::active() && node && redirect::is_redirect_hostname(node))
+    return o_getaddrinfo(redirect::server_ip_str(), service, hints, res);
+  return o_getaddrinfo(node, service, hints, res);
+}
+
+int WSAAPI d_connect(SOCKET s, const sockaddr* name, int namelen){
+  if(redirect::active() && name && namelen >= (int)sizeof(sockaddr_in)){
+    auto* sin = reinterpret_cast<const sockaddr_in*>(name);
+    if(sin->sin_family == AF_INET && ntohs(sin->sin_port) == 443 &&
+       sin->sin_addr.s_addr == redirect::server_ip_nbo()){
+      sockaddr_in rw = *sin;
+      rw.sin_port = htons(redirect::rest_port());
+      redirect::mark_redirected((uint64_t)s);
+      return o_connect(s, reinterpret_cast<const sockaddr*>(&rw), sizeof(rw));
+    }
+  }
+  return o_connect(s, name, namelen);
+}
+
 }  // namespace
 
 void install(){
@@ -236,6 +263,19 @@ void install(){
   if(!gor || !hook::create(gor, (void*)&d_GetOverlappedResult, (void**)&o_GetOverlappedResult)){
     uint8_t id = API_GETOVERLAPPEDRESULT;
     client::sink().write(cap::kind::HOOK_FAILED, &id, 1);
+  }
+  // Phase 2: redirect getaddrinfo (DNS) and connect (port 443 → rest_port).
+  if(redirect::active()){
+    void* gai = ws ? (void*)GetProcAddress(ws, "getaddrinfo") : nullptr;
+    if(!gai || !hook::create(gai, (void*)&d_getaddrinfo, (void**)&o_getaddrinfo)){
+      uint8_t id = API_GETADDRINFO;
+      client::sink().write(cap::kind::HOOK_FAILED, &id, 1);
+    }
+    void* con = ws ? (void*)GetProcAddress(ws, "connect") : nullptr;
+    if(!con || !hook::create(con, (void*)&d_connect, (void**)&o_connect)){
+      uint8_t id = API_CONNECT;
+      client::sink().write(cap::kind::HOOK_FAILED, &id, 1);
+    }
   }
 }
 }

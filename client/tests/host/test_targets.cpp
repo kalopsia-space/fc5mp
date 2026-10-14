@@ -31,7 +31,7 @@ int main(){
   for(const auto& e : t){
     auto s = fc5mp::sig::parse(e.sig);
     assert(s.has_value());                 // every signature parses
-    assert(e.kind>=10 && e.kind<=14);
+    assert(e.kind>=10 && e.kind<=15);
   }
   // missing_indices: diagnostic helper for the live run. With all targets
   // resolved it is empty; with a hole it names the absent table index.
@@ -56,10 +56,11 @@ int main(){
         auto s=fc5mp::sig::parse(e.sig);
         assert(fc5mp::sig::find_unique(d.data(),d.size(),*s).has_value());
       }
-      // SSL_read / SSL_write land on the RVAs identified by RE (plan P1.5b)
+      // SSL_read / SSL_write / SSL_connect land on the RVAs identified by RE
       for(const auto& pr : r){
-        if(pr.first==index_of("ssl_read"))  assert(off_to_rva(d, pr.second)==0x3dd0560);
-        if(pr.first==index_of("ssl_write")) assert(off_to_rva(d, pr.second)==0x3dd09c0);
+        if(pr.first==index_of("ssl_read"))    assert(off_to_rva(d, pr.second)==0x3dd0560);
+        if(pr.first==index_of("ssl_write"))   assert(off_to_rva(d, pr.second)==0x3dd09c0);
+        if(pr.first==index_of("ssl_connect")) assert(off_to_rva(d, pr.second)==0x3dcf330);
       }
     }
   }

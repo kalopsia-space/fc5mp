@@ -25,6 +25,9 @@ const std::vector<Target>& table(){
     {"ssl_write",
      "B8 38 00 00 00 E8 ?? ?? ?? ?? 48 2B E0 48 83 79 30 00 75 28 BA D0 00 00 00 C7 44 24 20 16 04 00 00",
      cap::kind::SSL_WRITE_ADDR},
+    {"ssl_connect",
+     "40 53 B8 20 00 00 00 E8 ?? ?? ?? ?? 48 2B E0 48 83 79 30 00 48 8B D9 75 05 E8 ?? ?? ?? ?? 48 8B 43 08 48 8B CB 48 83 C4 20 5B 48 FF 60 28",
+     cap::kind::SSL_CONNECT_ADDR},
   };
   return t;
 }
@@ -63,16 +66,18 @@ void install_all(){
   auto nt  = reinterpret_cast<const IMAGE_NT_HEADERS*>(base + dos->e_lfanew);
   size_t img = nt->OptionalHeader.SizeOfImage;
   auto resolved = resolve(base, img);
-  void* ssl_read = nullptr; void* ssl_write = nullptr;
+  void* ssl_read = nullptr; void* ssl_write = nullptr; void* ssl_connect = nullptr;
   for(const auto& pr : resolved){
     uint64_t va = reinterpret_cast<uint64_t>(base) + pr.second;   // resolved address
     w.write(table()[pr.first].kind, reinterpret_cast<const uint8_t*>(&va), sizeof(va));
-    if(table()[pr.first].kind == cap::kind::SSL_READ_ADDR)  ssl_read  = reinterpret_cast<void*>(va);
-    if(table()[pr.first].kind == cap::kind::SSL_WRITE_ADDR) ssl_write = reinterpret_cast<void*>(va);
+    if(table()[pr.first].kind == cap::kind::SSL_READ_ADDR)    ssl_read    = reinterpret_cast<void*>(va);
+    if(table()[pr.first].kind == cap::kind::SSL_WRITE_ADDR)   ssl_write   = reinterpret_cast<void*>(va);
+    if(table()[pr.first].kind == cap::kind::SSL_CONNECT_ADDR) ssl_connect = reinterpret_cast<void*>(va);
   }
-  // Install the TLS plaintext detours on the static OpenSSL entry points.
-  // tls::install_at logs HOOK_FAILED for either address it can't resolve/hook.
-  fc5mp::tls::install_at(ssl_read, ssl_write);
+  // Install TLS detours on the static OpenSSL entry points. ssl_connect is
+  // hooked only when redirect mode is active (skips handshake so the server
+  // receives plain HTTP). tls::install_at logs HOOK_FAILED for any it can't hook.
+  fc5mp::tls::install_at(ssl_read, ssl_write, ssl_connect);
   // Log any table signature NOT found in the mapped image, so a short/empty
   // capture is self-diagnosing (on-disk uniqueness is verified by the host test;
   // mapped-image presence can only be confirmed here, in the live session).
