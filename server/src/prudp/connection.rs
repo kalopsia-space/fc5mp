@@ -1,6 +1,6 @@
 use std::net::SocketAddr;
 use super::rc4::Rc4;
-use super::transport::{Packet, PacketType, FLAG_ACK, FLAG_NEED_ACK};
+use super::transport::{Packet, PacketType, FLAG_ACK};
 
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum Phase {
@@ -41,17 +41,19 @@ impl Connection {
         if self.phase != Phase::AwaitingSyn {
             return None;
         }
-        self.client_signature = pkt.signature;
+        self.client_signature = pkt.connection_signature;
         self.phase = Phase::AwaitingConnect;
         tracing::info!(addr = %self.addr, "SYN received, sending SYN-ACK");
         Some(Packet {
             source: pkt.dest,
             dest: pkt.source,
             packet_type: PacketType::Syn,
-            flags: FLAG_ACK | FLAG_NEED_ACK,
+            flags: FLAG_ACK,
             session_id: 0,
-            signature: self.server_signature,
+            signature: 0,
             sequence: 0,
+            fragment_id: 0,
+            connection_signature: self.server_signature,
             payload: vec![],
         })
     }
@@ -76,6 +78,8 @@ impl Connection {
             session_id: self.session_id,
             signature: self.server_signature,
             sequence: 0,
+            fragment_id: 0,
+            connection_signature: self.server_signature,
             payload: vec![],
         })
     }
@@ -95,6 +99,8 @@ impl Connection {
             session_id: self.session_id,
             signature: self.server_signature,
             sequence,
+            fragment_id: 0,
+            connection_signature: 0,
             payload: vec![],
         }
     }
@@ -110,7 +116,8 @@ mod tests {
         let mut conn = Connection::new("127.0.0.1:9999".parse().unwrap());
         let syn = Packet {
             source: 0x3f, dest: 0x31, packet_type: PacketType::Syn,
-            flags: FLAG_NEED_ACK, session_id: 0, signature: 0, sequence: 0, payload: vec![],
+            flags: FLAG_NEED_ACK, session_id: 0, signature: 0, sequence: 0,
+            fragment_id: 0, connection_signature: 0, payload: vec![],
         };
         let resp = conn.handle_syn(&syn).unwrap();
         assert_eq!(resp.packet_type, PacketType::Syn);
@@ -123,13 +130,15 @@ mod tests {
         let mut conn = Connection::new("127.0.0.1:9999".parse().unwrap());
         let syn = Packet {
             source: 0x3f, dest: 0x31, packet_type: PacketType::Syn,
-            flags: FLAG_NEED_ACK, session_id: 0, signature: 0, sequence: 0, payload: vec![],
+            flags: FLAG_NEED_ACK, session_id: 0, signature: 0, sequence: 0,
+            fragment_id: 0, connection_signature: 0, payload: vec![],
         };
         conn.handle_syn(&syn);
         let connect = Packet {
             source: 0x3f, dest: 0x31, packet_type: PacketType::Connect,
             flags: FLAG_RELIABLE | FLAG_NEED_ACK, session_id: 0x1c,
-            signature: 0x12345678, sequence: 1, payload: vec![0x45, 0x43, 0x4b, 0x31],
+            signature: 0x12345678, sequence: 1, fragment_id: 0,
+            connection_signature: 0xAABBCCDD, payload: vec![0x45, 0x43, 0x4b, 0x31],
         };
         let resp = conn.handle_connect(&connect).unwrap();
         assert_eq!(resp.packet_type, PacketType::Connect);
@@ -143,7 +152,8 @@ mod tests {
         let mut conn = Connection::new("127.0.0.1:9999".parse().unwrap());
         let connect = Packet {
             source: 0x3f, dest: 0x31, packet_type: PacketType::Connect,
-            flags: 0, session_id: 0x1c, signature: 0, sequence: 1, payload: vec![],
+            flags: 0, session_id: 0x1c, signature: 0, sequence: 1,
+            fragment_id: 0, connection_signature: 0, payload: vec![],
         };
         assert!(conn.handle_connect(&connect).is_none());
     }

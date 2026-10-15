@@ -82,6 +82,8 @@ recvfrom_t    o_recvfrom    = nullptr;
 WSASendTo_t   o_WSASendTo   = nullptr;
 WSARecvFrom_t o_WSARecvFrom = nullptr;
 GetOverlappedResult_t o_GetOverlappedResult = nullptr;
+using connect_t = int (WSAAPI*)(SOCKET, const sockaddr*, int);
+connect_t     o_connect     = nullptr;
 
 int WSAAPI d_sendto(SOCKET s, const char* buf, int len, int flags, const sockaddr* to, int tolen){
   Reentry g;   // set before the call, so nested hooked calls pass through
@@ -215,9 +217,7 @@ BOOL WINAPI d_GetOverlappedResult(HANDLE h, LPOVERLAPPED ov, LPDWORD xfer, BOOL 
   return ok;
 }
 using getaddrinfo_t = int (WSAAPI*)(const char*, const char*, const ADDRINFOA*, PADDRINFOA*);
-using connect_t = int (WSAAPI*)(SOCKET, const sockaddr*, int);
 getaddrinfo_t o_getaddrinfo = nullptr;
-connect_t     o_connect     = nullptr;
 
 int WSAAPI d_getaddrinfo(const char* node, const char* service,
                          const ADDRINFOA* hints, PADDRINFOA* res){
@@ -229,12 +229,14 @@ int WSAAPI d_getaddrinfo(const char* node, const char* service,
 int WSAAPI d_connect(SOCKET s, const sockaddr* name, int namelen){
   if(redirect::active() && name && namelen >= (int)sizeof(sockaddr_in)){
     auto* sin = reinterpret_cast<const sockaddr_in*>(name);
-    if(sin->sin_family == AF_INET && ntohs(sin->sin_port) == 443 &&
-       sin->sin_addr.s_addr == redirect::server_ip_nbo()){
-      sockaddr_in rw = *sin;
-      rw.sin_port = htons(redirect::rest_port());
-      redirect::mark_redirected((uint64_t)s);
-      return o_connect(s, reinterpret_cast<const sockaddr*>(&rw), sizeof(rw));
+    if(sin->sin_family == AF_INET){
+      uint16_t port = ntohs(sin->sin_port);
+      if(port == 6570){
+        sockaddr_in rw = *sin;
+        rw.sin_addr.s_addr = redirect::server_ip_nbo();
+        rw.sin_port = htons(6570);
+        return o_connect(s, reinterpret_cast<const sockaddr*>(&rw), sizeof(rw));
+      }
     }
   }
   return o_connect(s, name, namelen);
@@ -264,13 +266,13 @@ void install(){
     uint8_t id = API_GETOVERLAPPEDRESULT;
     client::sink().write(cap::kind::HOOK_FAILED, &id, 1);
   }
-  // Phase 2: redirect getaddrinfo (DNS) and connect (port 443 → rest_port).
+  // Hook connect to rewrite UDP peer address for PRUDP sockets. Without this,
+  // a connected UDP socket filters incoming packets by source address, so
+  // responses from our server (127.0.0.1) get dropped because the socket is
+  // connected to the original Ubisoft IP.
+  // NOTE: getaddrinfo is NOT hooked — REST traffic goes through a separate
+  // Ubisoft process (network.CrUtilities.exe), not FarCry5.exe.
   if(redirect::active()){
-    void* gai = ws ? (void*)GetProcAddress(ws, "getaddrinfo") : nullptr;
-    if(!gai || !hook::create(gai, (void*)&d_getaddrinfo, (void**)&o_getaddrinfo)){
-      uint8_t id = API_GETADDRINFO;
-      client::sink().write(cap::kind::HOOK_FAILED, &id, 1);
-    }
     void* con = ws ? (void*)GetProcAddress(ws, "connect") : nullptr;
     if(!con || !hook::create(con, (void*)&d_connect, (void**)&o_connect)){
       uint8_t id = API_CONNECT;

@@ -17,7 +17,7 @@ pub async fn run(addr: SocketAddr, kerberos: Arc<KerberosServer>) -> anyhow::Res
     tracing::info!(%addr, "PRUDP server listening");
     let mut buf = [0u8; 2048];
     let mut connections: HashMap<SocketAddr, Connection> = HashMap::new();
-    let checksum_key: u32 = 0;
+    let access_key_sum: u8 = 0;
 
     loop {
         let (len, peer) = match sock.recv_from(&mut buf).await {
@@ -29,7 +29,7 @@ pub async fn run(addr: SocketAddr, kerberos: Arc<KerberosServer>) -> anyhow::Res
         };
         let data = &buf[..len];
 
-        let pkt = match Packet::decode(data, checksum_key) {
+        let pkt = match Packet::decode(data, access_key_sum) {
             Ok(p) => p,
             Err(e) => {
                 tracing::warn!(%peer, %e, bytes = len, "dropping malformed PRUDP packet");
@@ -93,6 +93,8 @@ pub async fn run(addr: SocketAddr, kerberos: Arc<KerberosServer>) -> anyhow::Res
                                 session_id: conn.session_id,
                                 signature: conn.server_signature,
                                 sequence: seq,
+                                fragment_id: 0,
+                                connection_signature: 0,
                                 payload: encrypted,
                             })
                         }
@@ -121,13 +123,14 @@ pub async fn run(addr: SocketAddr, kerberos: Arc<KerberosServer>) -> anyhow::Res
                     source: pkt.dest, dest: pkt.source,
                     packet_type: PacketType::Ping, flags: transport::FLAG_ACK,
                     session_id: conn.session_id, signature: conn.server_signature,
-                    sequence: pkt.sequence, payload: vec![],
+                    sequence: pkt.sequence, fragment_id: 0,
+                    connection_signature: 0, payload: vec![],
                 })
             }
         };
 
         if let Some(resp) = response {
-            let out = resp.encode(checksum_key);
+            let out = resp.encode(access_key_sum);
             tracing::debug!(
                 %peer, typ = %resp.packet_type, seq = resp.sequence, len = out.len(),
                 "PRUDP -> send"

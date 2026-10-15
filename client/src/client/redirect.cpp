@@ -89,6 +89,37 @@ bool ends_with_ci(const char* s, size_t slen, const char* suffix, size_t suflen)
 
 bool load(){
     auto path = config_path();
+#ifdef _WIN32
+    if(FILE* diag = fopen("fc5mp-redirect-diag.txt", "w")){
+        fprintf(diag, "env FC5MP_REDIRECT: %s\n", getenv("FC5MP_REDIRECT") ? getenv("FC5MP_REDIRECT") : "(null)");
+        fprintf(diag, "env USERPROFILE: %s\n", getenv("USERPROFILE") ? getenv("USERPROFILE") : "(null)");
+        fprintf(diag, "env HOME: %s\n", getenv("HOME") ? getenv("HOME") : "(null)");
+        fprintf(diag, "config_path: %s\n", path.empty() ? "(empty)" : path.c_str());
+        if(!path.empty()){
+            FILE* t = fopen(path.c_str(), "r");
+            fprintf(diag, "fopen result: %s\n", t ? "OK" : "FAILED");
+            if(t){
+                char line[256];
+                int lc = 0;
+                while(fgets(line, sizeof(line), t) && lc < 10){
+                    fprintf(diag, "  line[%d]: %s", lc, line);
+                    lc++;
+                }
+                fclose(t);
+            }
+        }
+        Config tcfg{};
+        bool parsed = !path.empty() && parse_config(path.c_str(), tcfg);
+        fprintf(diag, "parse_config: %s\n", parsed ? "OK" : "FAILED");
+        if(parsed){
+            auto* b = reinterpret_cast<const uint8_t*>(&tcfg.server_ip);
+            fprintf(diag, "server_ip: %u.%u.%u.%u\n", b[0], b[1], b[2], b[3]);
+            fprintf(diag, "prudp_port: %u\n", tcfg.prudp_port);
+            fprintf(diag, "rest_port: %u\n", tcfg.rest_port);
+        }
+        fclose(diag);
+    }
+#endif
     if(path.empty()) return false;
     Config cfg{};
     if(!parse_config(path.c_str(), cfg)) return false;

@@ -19,7 +19,8 @@ async fn syn_gets_syn_ack() {
         source: 0x3f, dest: 0x31,
         packet_type: fc5mp_server::prudp::transport::PacketType::Syn,
         flags: fc5mp_server::prudp::transport::FLAG_NEED_ACK,
-        session_id: 0, signature: 0, sequence: 0, payload: vec![],
+        session_id: 0, signature: 0, sequence: 0, fragment_id: 0,
+        connection_signature: 0, payload: vec![],
     };
     client.send_to(&syn.encode(0), actual_addr).await.unwrap();
 
@@ -52,7 +53,8 @@ async fn reconnect_after_stale_connection() {
         source: 0x3f, dest: 0x31,
         packet_type: fc5mp_server::prudp::transport::PacketType::Syn,
         flags: fc5mp_server::prudp::transport::FLAG_NEED_ACK,
-        session_id: 0, signature: 0, sequence: 0, payload: vec![],
+        session_id: 0, signature: 0, sequence: 0, fragment_id: 0,
+        connection_signature: 0, payload: vec![],
     };
 
     // First SYN — gets SYN-ACK
