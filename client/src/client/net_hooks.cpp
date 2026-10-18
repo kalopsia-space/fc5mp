@@ -27,6 +27,7 @@ std::atomic<bool> g_seen[API_COUNT];
 std::atomic<uint32_t> g_overlapped{0};
 PendingRecvs g_pending;   // process-wide registry of in-flight overlapped recvs
 thread_local bool t_in_hook = false;
+static FILE* g_connect_log = nullptr;
 
 // Nested calls from the same thread pass straight through unlogged, so if a
 // ws2_32 build implements one hooked API via another, each datagram is still
@@ -92,8 +93,20 @@ int WSAAPI d_sendto(SOCKET s, const char* buf, int len, int flags, const sockadd
   if(redirect::active() && to && (size_t)tolen <= sizeof(rw) &&
      tolen >= (int)sizeof(sockaddr_in)){
     std::memcpy(&rw, to, (size_t)tolen);
-    if(redirect::maybe_rewrite_dest((sockaddr*)&rw, tolen))
+    if(redirect::maybe_rewrite_dest((sockaddr*)&rw, tolen)){
       to = (const sockaddr*)&rw;
+      if(!g_connect_log) g_connect_log = fopen("fc5mp-connect-trace.txt", "w");
+      if(g_connect_log){
+        auto* os = reinterpret_cast<const sockaddr_in*>(orig_to);
+        auto* ns = reinterpret_cast<const sockaddr_in*>(to);
+        auto* ob = reinterpret_cast<const uint8_t*>(&os->sin_addr);
+        auto* nb = reinterpret_cast<const uint8_t*>(&ns->sin_addr);
+        fprintf(g_connect_log, "sendto s=%llu %u.%u.%u.%u:%u -> %u.%u.%u.%u:%u len=%d\n",
+                (unsigned long long)s, ob[0],ob[1],ob[2],ob[3], ntohs(os->sin_port),
+                nb[0],nb[1],nb[2],nb[3], ntohs(ns->sin_port), len);
+        fflush(g_connect_log);
+      }
+    }
   }
   int r = o_sendto(s, buf, len, flags, to, tolen);
   DWORD err = GetLastError();
@@ -216,17 +229,70 @@ BOOL WINAPI d_GetOverlappedResult(HANDLE h, LPOVERLAPPED ov, LPDWORD xfer, BOOL 
   SetLastError(err);
   return ok;
 }
+
 using getaddrinfo_t = int (WSAAPI*)(const char*, const char*, const ADDRINFOA*, PADDRINFOA*);
 getaddrinfo_t o_getaddrinfo = nullptr;
 
 int WSAAPI d_getaddrinfo(const char* node, const char* service,
                          const ADDRINFOA* hints, PADDRINFOA* res){
+  if(!g_connect_log) g_connect_log = fopen("fc5mp-connect-trace.txt", "w");
+  if(g_connect_log && node){
+    fprintf(g_connect_log, "dns %s service=%s", node, service ? service : "(null)");
+    bool redir = redirect::active() && redirect::is_redirect_hostname(node);
+    if(redir) fprintf(g_connect_log, " -> REDIRECT %s", redirect::server_ip_str());
+    fprintf(g_connect_log, "\n");
+    fflush(g_connect_log);
+  }
   if(redirect::active() && node && redirect::is_redirect_hostname(node))
     return o_getaddrinfo(redirect::server_ip_str(), service, hints, res);
   return o_getaddrinfo(node, service, hints, res);
 }
 
+using GetAddrInfoW_t = int (WSAAPI*)(const wchar_t*, const wchar_t*, const ADDRINFOW*, PADDRINFOW*);
+GetAddrInfoW_t o_GetAddrInfoW = nullptr;
+
+static bool is_redirect_hostname_w(const wchar_t* name){
+  if(!name) return false;
+  char narrow[256];
+  int n = WideCharToMultiByte(CP_UTF8, 0, name, -1, narrow, sizeof narrow, nullptr, nullptr);
+  if(n <= 0) return false;
+  return redirect::is_redirect_hostname(narrow);
+}
+
+int WSAAPI d_GetAddrInfoW(const wchar_t* node, const wchar_t* service,
+                          const ADDRINFOW* hints, PADDRINFOW* res){
+  if(!g_connect_log) g_connect_log = fopen("fc5mp-connect-trace.txt", "w");
+  if(g_connect_log && node){
+    char narrow[256]; int n = WideCharToMultiByte(CP_UTF8, 0, node, -1, narrow, sizeof narrow, nullptr, nullptr);
+    char svc[64] = "(null)"; if(service) WideCharToMultiByte(CP_UTF8, 0, service, -1, svc, sizeof svc, nullptr, nullptr);
+    if(n > 0){
+      bool redir = redirect::active() && is_redirect_hostname_w(node);
+      fprintf(g_connect_log, "dnsW %s service=%s", narrow, svc);
+      if(redir) fprintf(g_connect_log, " -> REDIRECT %s", redirect::server_ip_str());
+      fprintf(g_connect_log, "\n");
+      fflush(g_connect_log);
+    }
+  }
+  if(redirect::active() && node && is_redirect_hostname_w(node)){
+    wchar_t ip_w[16];
+    const char* ip = redirect::server_ip_str();
+    MultiByteToWideChar(CP_UTF8, 0, ip, -1, ip_w, 16);
+    return o_GetAddrInfoW(ip_w, service, hints, res);
+  }
+  return o_GetAddrInfoW(node, service, hints, res);
+}
+
 int WSAAPI d_connect(SOCKET s, const sockaddr* name, int namelen){
+  if(!g_connect_log) g_connect_log = fopen("fc5mp-connect-trace.txt", "w");
+  if(g_connect_log && name && namelen >= (int)sizeof(sockaddr_in)){
+    auto* sin = reinterpret_cast<const sockaddr_in*>(name);
+    if(sin->sin_family == AF_INET){
+      auto* b = reinterpret_cast<const uint8_t*>(&sin->sin_addr);
+      fprintf(g_connect_log, "connect s=%llu ip=%u.%u.%u.%u port=%u\n",
+              (unsigned long long)s, b[0],b[1],b[2],b[3], ntohs(sin->sin_port));
+      fflush(g_connect_log);
+    }
+  }
   if(redirect::active() && name && namelen >= (int)sizeof(sockaddr_in)){
     auto* sin = reinterpret_cast<const sockaddr_in*>(name);
     if(sin->sin_family == AF_INET){
@@ -237,6 +303,28 @@ int WSAAPI d_connect(SOCKET s, const sockaddr* name, int namelen){
         rw.sin_port = htons(6570);
         return o_connect(s, reinterpret_cast<const sockaddr*>(&rw), sizeof(rw));
       }
+      if(port == 443 && !redirect::tls_ready()){
+        if(g_connect_log){
+          fprintf(g_connect_log, "  -> port 443 SKIPPED (tls hooks not ready)\n");
+          fflush(g_connect_log);
+        }
+      }
+      if(port == 443 && redirect::tls_ready()){
+        sockaddr_in rw = *sin;
+        rw.sin_addr.s_addr = redirect::server_ip_nbo();
+        rw.sin_port = htons(redirect::rest_port());
+        redirect::mark_redirected((uint64_t)s);
+        int cr = o_connect(s, reinterpret_cast<const sockaddr*>(&rw), sizeof(rw));
+        DWORD ce = WSAGetLastError();
+        if(g_connect_log){
+          auto* rb = reinterpret_cast<const uint8_t*>(&rw.sin_addr);
+          fprintf(g_connect_log, "  -> REDIRECT to %u.%u.%u.%u:%u ret=%d wsa=%lu\n",
+                  rb[0],rb[1],rb[2],rb[3], ntohs(rw.sin_port), cr, ce);
+          fflush(g_connect_log);
+        }
+        WSASetLastError(ce);
+        return cr;
+      }
     }
   }
   return o_connect(s, name, namelen);
@@ -245,6 +333,7 @@ int WSAAPI d_connect(SOCKET s, const sockaddr* name, int namelen){
 }  // namespace
 
 void install(){
+  FILE* hlog = fopen("fc5mp-hooks-diag.txt", "w");
   struct Spec { const char* name; void* detour; void** orig; };
   const Spec specs[API_COUNT] = {
     {"sendto",      (void*)&d_sendto,      (void**)&o_sendto},
@@ -253,6 +342,7 @@ void install(){
     {"WSARecvFrom", (void*)&d_WSARecvFrom, (void**)&o_WSARecvFrom},
   };
   HMODULE ws = LoadLibraryW(L"ws2_32.dll");
+  if(hlog) fprintf(hlog, "ws2_32=%p redirect_active=%d\n", (void*)ws, redirect::active());
   for(uint8_t i = 0; i < API_COUNT; i++){
     void* t = ws ? (void*)GetProcAddress(ws, specs[i].name) : nullptr;
     if(!t || !hook::create(t, specs[i].detour, specs[i].orig))
@@ -270,15 +360,26 @@ void install(){
   // a connected UDP socket filters incoming packets by source address, so
   // responses from our server (127.0.0.1) get dropped because the socket is
   // connected to the original Ubisoft IP.
-  // NOTE: getaddrinfo is NOT hooked — REST traffic goes through a separate
-  // Ubisoft process (network.CrUtilities.exe), not FarCry5.exe.
   if(redirect::active()){
     void* con = ws ? (void*)GetProcAddress(ws, "connect") : nullptr;
-    if(!con || !hook::create(con, (void*)&d_connect, (void**)&o_connect)){
+    bool con_ok = con && hook::create(con, (void*)&d_connect, (void**)&o_connect);
+    if(hlog) fprintf(hlog, "connect: addr=%p hook=%s\n", con, con_ok ? "OK" : "FAIL");
+    if(!con_ok){
       uint8_t id = API_CONNECT;
       client::sink().write(cap::kind::HOOK_FAILED, &id, 1);
     }
+    void* gai = ws ? (void*)GetProcAddress(ws, "getaddrinfo") : nullptr;
+    if(gai) hook::create(gai, (void*)&d_getaddrinfo, (void**)&o_getaddrinfo);
+    if(hlog) fprintf(hlog, "getaddrinfo: addr=%p\n", gai);
+    void* gaiw = ws ? (void*)GetProcAddress(ws, "GetAddrInfoW") : nullptr;
+    bool gaiw_ok = gaiw && hook::create(gaiw, (void*)&d_GetAddrInfoW, (void**)&o_GetAddrInfoW);
+    if(hlog) fprintf(hlog, "GetAddrInfoW: addr=%p hook=%s\n", gaiw, gaiw_ok ? "OK" : "FAIL");
+    if(!gaiw_ok){
+      uint8_t id = API_GETADDRINFO;
+      client::sink().write(cap::kind::HOOK_FAILED, &id, 1);
+    }
   }
+  if(hlog) fclose(hlog);
 }
 }
 #else

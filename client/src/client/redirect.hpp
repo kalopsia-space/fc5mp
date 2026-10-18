@@ -21,6 +21,9 @@ const char* server_ip_str();
 uint16_t rest_port();
 // True if hostname should be redirected (*.ubi.com, *.ubisoft.com).
 bool is_redirect_hostname(const char* name);
+// Signal that TLS bypass hooks are installed and port-443 redirect is safe.
+void set_tls_ready();
+bool tls_ready();
 // Mark a socket as REST-redirected (called from connect hook).
 void mark_redirected(uint64_t sock);
 // True if socket was marked as REST-redirected.

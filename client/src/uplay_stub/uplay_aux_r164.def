@@ -1,0 +1,3 @@
+LIBRARY uplay_aux_r164
+EXPORTS
+    UPLAY_GetActivate

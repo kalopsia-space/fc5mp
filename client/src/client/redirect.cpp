@@ -24,6 +24,7 @@ struct Config {
 };
 
 bool g_active = false;
+std::atomic<bool> g_tls_ready{false};
 Config g_cfg{};
 
 // Phase 2: lock-free set of redirected sockets (REST connections via our server)
@@ -139,6 +140,8 @@ bool maybe_rewrite_dest(sockaddr* dest, int destlen){
 }
 
 bool active(){ return g_active; }
+void set_tls_ready(){ g_tls_ready.store(true, std::memory_order_release); }
+bool tls_ready(){ return g_tls_ready.load(std::memory_order_acquire); }
 
 uint32_t server_ip_nbo(){ return g_cfg.server_ip; }
 

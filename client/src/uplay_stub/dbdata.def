@@ -1,0 +1,3 @@
+LIBRARY dbdata
+EXPORTS
+    ?getGameTokenInterface@@YAPEAVIGameTokenInterface@@PEAX_K@Z = getGameTokenInterface

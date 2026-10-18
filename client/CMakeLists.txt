@@ -68,6 +68,19 @@ if(CMAKE_SYSTEM_NAME STREQUAL "Windows")
   target_include_directories(test_tls_hooks PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}/src ${minhook_SOURCE_DIR}/include)
   target_link_libraries(test_tls_hooks PRIVATE minhook ws2_32)
+
+  add_library(uplay_r1_loader64 SHARED src/uplay_stub/uplay_stub.cpp)
+  set_target_properties(uplay_r1_loader64 PROPERTIES PREFIX "" OUTPUT_NAME "uplay_r1_loader64"
+    LINK_FLAGS "${CMAKE_CURRENT_SOURCE_DIR}/src/uplay_stub/uplay_r1_loader64.def")
+  target_link_libraries(uplay_r1_loader64 PRIVATE shell32)
+
+  add_library(uplay_aux_r164 SHARED src/uplay_stub/uplay_aux.cpp)
+  set_target_properties(uplay_aux_r164 PROPERTIES PREFIX "" OUTPUT_NAME "uplay_aux_r164"
+    LINK_FLAGS "${CMAKE_CURRENT_SOURCE_DIR}/src/uplay_stub/uplay_aux_r164.def")
+
+  add_library(dbdata SHARED src/uplay_stub/dbdata_stub.cpp)
+  set_target_properties(dbdata PROPERTIES PREFIX "" OUTPUT_NAME "dbdata"
+    LINK_FLAGS "${CMAKE_CURRENT_SOURCE_DIR}/src/uplay_stub/dbdata.def")
 else()
   enable_testing()
   add_executable(test_smoke tests/host/test_smoke.cpp)
