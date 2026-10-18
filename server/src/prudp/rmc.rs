@@ -52,7 +52,7 @@ pub fn encode_response(call_id: u32, protocol_id: u8, method_id: u32, result_dat
     out.push(protocol_id);
     out.push(0x01);
     out.extend_from_slice(&call_id.to_le_bytes());
-    out.extend_from_slice(&method_id.to_le_bytes());
+    out.extend_from_slice(&(method_id | 0x8000).to_le_bytes());
     out.extend_from_slice(result_data);
     out
 }

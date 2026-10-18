@@ -38,6 +38,7 @@ pub const FLAG_ACK: u8 = 0x1;
 pub const FLAG_RELIABLE: u8 = 0x2;
 pub const FLAG_NEED_ACK: u8 = 0x4;
 pub const FLAG_HAS_SIZE: u8 = 0x8;
+pub const FLAG_MULTI_ACK: u8 = 0x10;
 
 const CHECKSUM_SIZE: usize = 4;
 
@@ -47,7 +48,7 @@ const CHECKSUM_SIZE: usize = 4;
 ///   source(1) + dest(1) + type_flags(1) + session_id(1)
 ///   + packet_signature(4) + sequence(2)
 ///
-/// type_flags: (flags << 3) | type
+/// type_flags: (flags << 3) | type  (3-bit type in bits 0-2, 5-bit flags in bits 3-7)
 ///
 /// After header, packet-type-specific data:
 ///   SYN/CONNECT: connection_signature(4)
@@ -97,7 +98,7 @@ impl Packet {
         let signature = u32::from_le_bytes([data[4], data[5], data[6], data[7]]);
         let sequence = u16::from_le_bytes([data[8], data[9]]);
 
-        let (connection_signature, fragment_id, payload_start) = match packet_type {
+        let (connection_signature, fragment_id, mut payload_start) = match packet_type {
             PacketType::Syn | PacketType::Connect => {
                 if data.len() < HEADER_SIZE + 4 + CHECKSUM_SIZE {
                     return Err(DecodeError::TooShort(data.len()));
@@ -113,6 +114,13 @@ impl Packet {
             }
             _ => (0, 0, 10),
         };
+
+        if flags & FLAG_HAS_SIZE != 0 {
+            if data.len() < payload_start + 2 + CHECKSUM_SIZE {
+                return Err(DecodeError::TooShort(data.len()));
+            }
+            payload_start += 2;
+        }
 
         let cs_offset = data.len() - CHECKSUM_SIZE;
         let got = u32::from_le_bytes([data[cs_offset], data[cs_offset+1], data[cs_offset+2], data[cs_offset+3]]);
@@ -147,6 +155,10 @@ impl Packet {
             _ => {}
         }
 
+        if self.flags & FLAG_HAS_SIZE != 0 {
+            buf.extend_from_slice(&(self.payload.len() as u16).to_le_bytes());
+        }
+
         buf.extend_from_slice(&self.payload);
         let cs = compute_checksum(&buf, access_key_sum);
         buf.extend_from_slice(&cs.to_le_bytes());
@@ -154,13 +166,17 @@ impl Packet {
     }
 }
 
-/// Quazal Rendez-Vous 4-byte checksum.
-/// Sums complete u32 LE words, discards any trailing bytes that don't
-/// form a full word, then adds access_key_sum.
+/// Quazal Rendez-Vous 4-byte enhanced checksum.
+/// Zero-pads data to a 4-byte boundary, sums all u32 LE words,
+/// then adds access_key_sum.
 pub fn compute_checksum(data: &[u8], access_key_sum: u8) -> u32 {
     let word_sum: u32 = data
-        .chunks_exact(4)
-        .map(|c| u32::from_le_bytes([c[0], c[1], c[2], c[3]]))
+        .chunks(4)
+        .map(|c| {
+            let mut arr = [0u8; 4];
+            arr[..c.len()].copy_from_slice(c);
+            u32::from_le_bytes(arr)
+        })
         .fold(0u32, |a, b| a.wrapping_add(b));
     (access_key_sum as u32).wrapping_add(word_sum)
 }
@@ -264,7 +280,6 @@ mod tests {
         assert_eq!(encoded[2], 0x08); // (ACK << 3) | SYN
         // 10 header + 4 conn_sig + 4 checksum = 18
         assert_eq!(encoded.len(), 18);
-        // Verify round-trip
         let decoded = Packet::decode(&encoded, 0).unwrap();
         assert_eq!(decoded.packet_type, PacketType::Syn);
         assert_eq!(decoded.flags, FLAG_ACK);

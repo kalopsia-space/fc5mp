@@ -2,6 +2,7 @@ pub mod connection;
 pub mod kerberos;
 pub mod rc4;
 pub mod rmc;
+pub mod services;
 pub mod transport;
 
 use std::collections::HashMap;
@@ -10,14 +11,34 @@ use std::sync::Arc;
 use tokio::net::UdpSocket;
 use connection::{Connection, Phase};
 use kerberos::KerberosServer;
-use transport::{Packet, PacketType, FLAG_NEED_ACK, FLAG_RELIABLE, FLAG_HAS_SIZE};
+use transport::{Packet, PacketType, FLAG_NEED_ACK, FLAG_RELIABLE};
+use crate::state::ServerState;
 
-pub async fn run(addr: SocketAddr, kerberos: Arc<KerberosServer>) -> anyhow::Result<()> {
+fn strip_length_prefix(data: &[u8]) -> &[u8] {
+    if data.len() >= 2 {
+        let len = u16::from_le_bytes([data[0], data[1]]) as usize;
+        if 2 + len <= data.len() {
+            return &data[2..2 + len];
+        }
+    }
+    data
+}
+
+pub async fn run(addr: SocketAddr, kerberos: Arc<KerberosServer>, _state: ServerState) -> anyhow::Result<()> {
     let sock = UdpSocket::bind(addr).await?;
     tracing::info!(%addr, "PRUDP server listening");
     let mut buf = [0u8; 2048];
     let mut connections: HashMap<SocketAddr, Connection> = HashMap::new();
     let access_key_sum: u8 = 0;
+
+    let mut dispatcher = services::ServiceDispatcher::new();
+    dispatcher.register(services::ticket_granting::TicketGrantingService::new(kerberos.clone(), addr));
+    dispatcher.register(services::secure_connection::SecureConnectionService::new());
+    dispatcher.register(services::matchmaking::MatchMakingService::new());
+    dispatcher.register(services::nat_traversal::NatTraversalService::new());
+    dispatcher.register(services::notifications::NotificationService::new());
+    dispatcher.register(services::health::HealthService::new());
+    dispatcher.register(services::monitoring::MonitoringService::new());
 
     loop {
         let (len, peer) = match sock.recv_from(&mut buf).await {
@@ -57,9 +78,11 @@ pub async fn run(addr: SocketAddr, kerberos: Arc<KerberosServer>) -> anyhow::Res
         let response = match pkt.packet_type {
             PacketType::Syn => conn.handle_syn(&pkt),
             PacketType::Connect => {
+                let was_connected = conn.phase == Phase::Connected;
                 let resp = conn.handle_connect(&pkt);
-                if conn.phase == Phase::Connected && !pkt.payload.is_empty() {
-                    match kerberos.process_ticket(&pkt.payload) {
+                if !was_connected && conn.phase == Phase::Connected && !pkt.payload.is_empty() {
+                    let ticket_data = strip_length_prefix(&pkt.payload);
+                    match kerberos.process_ticket(ticket_data) {
                         Ok(keys) => {
                             conn.rc4_recv = Some(rc4::Rc4::new(&keys.rc4_key));
                             conn.rc4_send = Some(rc4::Rc4::new(&keys.rc4_key));
@@ -80,7 +103,7 @@ pub async fn run(addr: SocketAddr, kerberos: Arc<KerberosServer>) -> anyhow::Res
                     }
                     match rmc::RmcRequest::decode(&decrypted) {
                         Ok(req) => {
-                            let resp_data = rmc::encode_error(req.call_id, req.protocol_id, 0x00010001);
+                            let resp_data = dispatcher.dispatch(&req, peer);
                             let mut encrypted = resp_data;
                             if let Some(ref mut cipher) = conn.rc4_send {
                                 cipher.apply(&mut encrypted);
@@ -89,7 +112,7 @@ pub async fn run(addr: SocketAddr, kerberos: Arc<KerberosServer>) -> anyhow::Res
                             Some(Packet {
                                 source: pkt.dest, dest: pkt.source,
                                 packet_type: PacketType::Data,
-                                flags: FLAG_RELIABLE | FLAG_NEED_ACK | FLAG_HAS_SIZE,
+                                flags: FLAG_RELIABLE | FLAG_NEED_ACK,
                                 session_id: conn.session_id,
                                 signature: conn.server_signature,
                                 sequence: seq,

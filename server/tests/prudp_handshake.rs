@@ -10,7 +10,8 @@ async fn syn_gets_syn_ack() {
 
     let kerberos = fc5mp_server::prudp::kerberos::KerberosServer::new();
     tokio::spawn(async move {
-        fc5mp_server::prudp::run(actual_addr, kerberos).await.unwrap();
+        let state = fc5mp_server::state::ServerState::new(4);
+        fc5mp_server::prudp::run(actual_addr, kerberos, state).await.unwrap();
     });
     tokio::time::sleep(std::time::Duration::from_millis(50)).await;
 
@@ -44,7 +45,8 @@ async fn reconnect_after_stale_connection() {
 
     let kerberos = fc5mp_server::prudp::kerberos::KerberosServer::new();
     tokio::spawn(async move {
-        fc5mp_server::prudp::run(actual_addr, kerberos).await.unwrap();
+        let state = fc5mp_server::state::ServerState::new(4);
+        fc5mp_server::prudp::run(actual_addr, kerberos, state).await.unwrap();
     });
     tokio::time::sleep(std::time::Duration::from_millis(50)).await;
 

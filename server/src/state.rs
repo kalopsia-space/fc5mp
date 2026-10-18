@@ -32,6 +32,7 @@ struct Inner {
     players: HashMap<Uuid, Player>,
     sessions: HashMap<Uuid, Session>,
     max_players: u8,
+    stable_profile_id: Option<Uuid>,
 }
 
 #[derive(Clone)]
@@ -43,7 +44,19 @@ impl ServerState {
             players: HashMap::new(),
             sessions: HashMap::new(),
             max_players,
+            stable_profile_id: None,
         })))
+    }
+
+    pub fn get_or_create_profile_id(&self) -> Uuid {
+        let mut inner = self.0.write().unwrap();
+        if let Some(id) = inner.stable_profile_id {
+            id
+        } else {
+            let id = Uuid::new_v4();
+            inner.stable_profile_id = Some(id);
+            id
+        }
     }
 
     pub fn add_player(&self, id: Uuid, name: String) -> Result<(), StateError> {
@@ -63,6 +76,10 @@ impl ServerState {
 
     pub fn get_player(&self, id: &Uuid) -> Option<Player> {
         self.0.read().unwrap().players.get(id).cloned()
+    }
+
+    pub fn any_profile_id(&self) -> Option<String> {
+        self.0.read().unwrap().players.keys().next().map(|id| id.to_string())
     }
 
     pub fn create_session(&self, host_id: Uuid) -> Result<Uuid, StateError> {
