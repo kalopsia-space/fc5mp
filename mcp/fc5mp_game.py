@@ -50,7 +50,7 @@ def _run(cmd, timeout=60, cwd=None, env=None):
 
 
 def _pids_matching(pattern):
-    rc, out, _ = _run(f"pgrep -af {pattern}", timeout=10)
+    rc, out, _ = _run(["pgrep", "-af", "--", pattern], timeout=10)
     lines = [l for l in out.splitlines() if l.strip()]
     return lines
 
@@ -322,7 +322,7 @@ def read_log(name: str, tail_lines: int = 200) -> str:
 @mcp.tool()
 def process_list(filter: str = "FarCry|fc5mp|wine") -> str:
     """List processes matching filter."""
-    rc, out, err = _run(f"pgrep -af '{filter}' || true", timeout=10)
+    rc, out, err = _run(["pgrep", "-af", "--", filter], timeout=10)
     return out.strip() or "(none)"
 
 
