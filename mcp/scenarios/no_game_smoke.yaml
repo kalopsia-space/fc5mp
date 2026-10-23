@@ -1,0 +1,10 @@
+name: no_game_smoke
+description: Safe scenario without launching game.
+steps:
+  - action: ensure_server
+    timeout_sec: 5
+  - action: screenshot
+    name: desktop
+  - action: classify
+  - action: ocr
+  - action: collect_logs

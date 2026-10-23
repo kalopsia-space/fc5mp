@@ -21,3 +21,15 @@ client/third_party/minhook/
 vendor/
 server/certs/
 *.log
+
+# Runtime capture (may contain account data) — never commit
+fc5mp-capture.bin
+fc5mp-*.log
+*.capture.bin
+
+# Third-party binaries/dumps and local tooling — never commit
+analysis/the-crew/
+analysis/tcu-launcher/
+*.7z
+*.whl
+.mcp.json

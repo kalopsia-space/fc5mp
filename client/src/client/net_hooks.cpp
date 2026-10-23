@@ -85,6 +85,8 @@ WSARecvFrom_t o_WSARecvFrom = nullptr;
 GetOverlappedResult_t o_GetOverlappedResult = nullptr;
 using connect_t = int (WSAAPI*)(SOCKET, const sockaddr*, int);
 connect_t     o_connect     = nullptr;
+using closesocket_t = int (WSAAPI*)(SOCKET);
+closesocket_t o_closesocket = nullptr;
 
 int WSAAPI d_sendto(SOCKET s, const char* buf, int len, int flags, const sockaddr* to, int tolen){
   Reentry g;   // set before the call, so nested hooked calls pass through
@@ -282,6 +284,11 @@ int WSAAPI d_GetAddrInfoW(const wchar_t* node, const wchar_t* service,
   return o_GetAddrInfoW(node, service, hints, res);
 }
 
+int WSAAPI d_closesocket(SOCKET s){
+  redirect::unmark_redirected((uint64_t)s);
+  return o_closesocket(s);
+}
+
 int WSAAPI d_connect(SOCKET s, const sockaddr* name, int namelen){
   if(!g_connect_log) g_connect_log = fopen("fc5mp-connect-trace.txt", "w");
   if(g_connect_log && name && namelen >= (int)sizeof(sockaddr_in)){
@@ -297,6 +304,8 @@ int WSAAPI d_connect(SOCKET s, const sockaddr* name, int namelen){
     auto* sin = reinterpret_cast<const sockaddr_in*>(name);
     if(sin->sin_family == AF_INET){
       uint16_t port = ntohs(sin->sin_port);
+      if(port != 443 && redirect::is_redirected((uint64_t)s))
+        redirect::unmark_redirected((uint64_t)s);
       if(port == 6570){
         sockaddr_in rw = *sin;
         rw.sin_addr.s_addr = redirect::server_ip_nbo();
@@ -361,6 +370,9 @@ void install(){
   // responses from our server (127.0.0.1) get dropped because the socket is
   // connected to the original Ubisoft IP.
   if(redirect::active()){
+    void* cls = ws ? (void*)GetProcAddress(ws, "closesocket") : nullptr;
+    bool cls_ok = cls && hook::create(cls, (void*)&d_closesocket, (void**)&o_closesocket);
+    if(hlog) fprintf(hlog, "closesocket: addr=%p hook=%s\n", cls, cls_ok ? "OK" : "FAIL");
     void* con = ws ? (void*)GetProcAddress(ws, "connect") : nullptr;
     bool con_ok = con && hook::create(con, (void*)&d_connect, (void**)&o_connect);
     if(hlog) fprintf(hlog, "connect: addr=%p hook=%s\n", con, con_ok ? "OK" : "FAIL");

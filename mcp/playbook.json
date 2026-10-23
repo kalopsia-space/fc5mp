@@ -1,0 +1,42 @@
+{
+  "rules": [
+    {
+      "match": ["Maine-118", "maine-118"],
+      "state": "login_error",
+      "diagnosis": "Game fetched /v2/applications/{id}/configuration from our server, read it, then aborted with Maine-118. Likely the game expects this config from the Ubisoft launcher over local IPC; self-fetched config takes a degraded path.",
+      "suggested_files": [
+        "server/src/rest/handlers.rs",
+        "client/src/client/tls_hooks.cpp",
+        "docs/research/2026-10-19-tls-handshake-status.md"
+      ],
+      "next_steps": [
+        "Redirect launcher (LD_PRELOAD gnutls) traffic too, so the normal 2026-10-14 path runs.",
+        "Or capture FC5's real /v2/applications/.../configuration response and reproduce byte-for-byte.",
+        "Compare our server log sequence to real-ubisoft capture REST sequence."
+      ]
+    },
+    {
+      "match": ["TLS", "protocol version", "handshake"],
+      "diagnosis": "TLS negotiation failure with the game's 2017-era OpenSSL.",
+      "suggested_files": ["server/src/main.rs", "client/src/client/tls_hooks.cpp"],
+      "next_steps": ["Ensure native TLS caps at 1.2 and SECLEVEL=0", "Check cert/key paths"]
+    },
+    {
+      "match": ["player logged in", "login"],
+      "diagnosis": "REST login succeeded; progress to app config / events / websocket.",
+      "suggested_files": ["server/src/rest/handlers.rs", "server/src/rest/mod.rs"],
+      "next_steps": ["Verify /v2/applications/{id}/configuration, /v4/spaces/{space}/configs/events, websocket upgrade"]
+    },
+    {
+      "match": ["PRUDP", "NEX", "kerberos", "session key"],
+      "diagnosis": "PRUDP/NEX layer issue; check handshake and Kerberos ticket processing.",
+      "suggested_files": ["server/src/prudp/connection.rs", "server/src/prudp/kerberos.rs", "server/src/prudp/transport.rs"],
+      "next_steps": ["Compare handshake to vendor/nex-go", "Verify session key derivation"]
+    }
+  ],
+  "default": {
+    "diagnosis": "No specific rule matched. Inspect observe() output and logs.",
+    "suggested_files": [],
+    "next_steps": ["Run observe(ocr=True)", "Check server_logs and game diag logs"]
+  }
+}

@@ -171,6 +171,14 @@ void mark_redirected(uint64_t sock){
     }
 }
 
+void unmark_redirected(uint64_t sock){
+    if(!sock) return;
+    for(auto& s : g_redirected){
+        uint64_t expected = sock;
+        s.compare_exchange_strong(expected, 0);
+    }
+}
+
 bool is_redirected(uint64_t sock){
     if(!sock) return false;
     for(const auto& s : g_redirected)

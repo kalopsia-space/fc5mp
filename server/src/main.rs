@@ -3,6 +3,24 @@ use fc5mp_server::state::ServerState;
 use clap::Parser;
 use tracing_subscriber::EnvFilter;
 use tokio::net::TcpListener;
+use axum_server::tls_openssl::OpenSSLConfig;
+use openssl::ssl::{SslAcceptor, SslFiletype, SslMethod, SslVersion};
+
+/// Build the TLS acceptor for the game's HTTPS. The game uses a 2017-era static
+/// OpenSSL (≈1.0.2) that tops out at TLS 1.2 and offers legacy ciphers, so we
+/// match socat's old permissiveness: allow down to TLS 1.0, cap at 1.2, and drop
+/// the OpenSSL-3 security level so old ciphers negotiate. Default acceptors are
+/// TLS 1.3-only and refuse the game outright (tlsv1 alert protocol version).
+fn build_tls_config() -> anyhow::Result<OpenSSLConfig> {
+    let mut b = SslAcceptor::mozilla_intermediate(SslMethod::tls())?;
+    b.set_min_proto_version(Some(SslVersion::TLS1))?;
+    b.set_max_proto_version(Some(SslVersion::TLS1_2))?;
+    b.set_cipher_list("ALL:@SECLEVEL=0")?;
+    b.set_certificate_chain_file("certs/cert.pem")?;
+    b.set_private_key_file("certs/key.pem", SslFiletype::PEM)?;
+    b.check_private_key()?;
+    Ok(OpenSSLConfig::try_from(b)?)
+}
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
@@ -41,6 +59,28 @@ async fn main() -> anyhow::Result<()> {
     tokio::spawn(async move {
         axum::serve(http_listener, app).await.unwrap();
     });
+
+    // Native TLS on rest_port, terminated in-process — REPLACES the socat relay,
+    // which intermittently dropped the game's HTTPS responses ("socat E I/O error"
+    // after config; a run where login got 0 bytes back). The game's HTTPS to
+    // :rest_port is now served directly by the REST app over OpenSSL TLS.
+    let tls_addr = std::net::SocketAddr::new(cfg.listen_ip, cfg.rest_port);
+    let tls_app = fc5mp_server::rest::router(state.clone(), &cfg, kerberos.clone());
+    match build_tls_config() {
+        Ok(tls_cfg) => {
+            tokio::spawn(async move {
+                tracing::info!(%tls_addr, "REST TLS (native openssl) listening");
+                if let Err(e) = axum_server::bind_openssl(tls_addr, tls_cfg)
+                    .serve(tls_app.into_make_service())
+                    .await
+                {
+                    tracing::error!(%e, "TLS server error");
+                }
+            });
+        }
+        Err(e) => tracing::error!(%e,
+            "failed to load TLS cert (certs/cert.pem + certs/key.pem); TLS port disabled"),
+    }
 
     // Accept loop with protocol detection
     tokio::spawn(async move {

@@ -1,0 +1,18 @@
+name: maine118_repro
+description: Reproduce login -> app config -> Maine-118 flow and capture evidence.
+steps:
+  - action: ensure_server
+    timeout_sec: 30
+  - action: launch
+    mode: wine
+  - action: wait
+    seconds: 25
+  - action: wait_for_state
+    state: main_menu
+    timeout_sec: 120
+  - action: screenshot
+    name: main_menu
+  - action: collect_logs
+  - action: assert_no_text
+    contains: "Maine-118"
+  - action: kill_game

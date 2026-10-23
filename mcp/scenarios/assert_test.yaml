@@ -1,0 +1,8 @@
+name: assert_test
+steps:
+  - action: assert_log_contains
+    file: fc5mp-hooks-diag.txt
+    pattern: "TLS"
+  - action: assert_log_not_contains
+    file: fc5mp-hooks-diag.txt
+    pattern: "THIS_STRING_SHOULD_NOT_EXIST"

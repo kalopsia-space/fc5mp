@@ -35,6 +35,8 @@ if(CMAKE_SYSTEM_NAME STREQUAL "Windows")
     src/client/redirect.cpp
     src/client/overlapped.cpp
     src/client/tls_hooks.cpp
+    src/client/uplay_hooks.cpp
+    src/client/memdump.cpp
     src/capture/redact.cpp
     src/hookcore/hookcore.cpp)
   set_target_properties(fc5mp-client PROPERTIES PREFIX "" OUTPUT_NAME "fc5mp-client")
@@ -77,6 +79,9 @@ if(CMAKE_SYSTEM_NAME STREQUAL "Windows")
   add_library(uplay_aux_r164 SHARED src/uplay_stub/uplay_aux.cpp)
   set_target_properties(uplay_aux_r164 PROPERTIES PREFIX "" OUTPUT_NAME "uplay_aux_r164"
     LINK_FLAGS "${CMAKE_CURRENT_SOURCE_DIR}/src/uplay_stub/uplay_aux_r164.def")
+
+  add_executable(UbisoftGameLauncher WIN32 src/uplay_stub/game_launcher_stub.cpp)
+  set_target_properties(UbisoftGameLauncher PROPERTIES OUTPUT_NAME "UbisoftGameLauncher")
 
   add_library(dbdata SHARED src/uplay_stub/dbdata_stub.cpp)
   set_target_properties(dbdata PROPERTIES PREFIX "" OUTPUT_NAME "dbdata"

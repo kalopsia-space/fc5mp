@@ -18,23 +18,20 @@ fi
 
 cleanup() {
     echo "[fc5mp] Shutting down..."
-    kill "$SOCAT_PID" 2>/dev/null || true
     kill "$SERVER_PID" 2>/dev/null || true
     wait 2>/dev/null
 }
 trap cleanup EXIT INT TERM
 
-echo "[fc5mp] Starting socat TLS terminator on :${REST_PORT} -> :${BACKEND_PORT}"
-socat OPENSSL-LISTEN:${REST_PORT},fork,reuseaddr,cert="$CERTS_DIR/combined.pem",verify=0 \
-    TCP:127.0.0.1:${BACKEND_PORT} &
-SOCAT_PID=$!
-
-echo "[fc5mp] Starting fc5mp-server (REST backend :${BACKEND_PORT}, PRUDP :6570)"
+# No socat: the server terminates TLS natively on REST_PORT via OpenSSL
+# (certs/cert.pem + certs/key.pem). socat's relay was dropping the game's
+# HTTPS responses, so it was removed.
+echo "[fc5mp] Starting fc5mp-server (native TLS :${REST_PORT}, PRUDP :6570)"
 cd "$SERVER_DIR"
 RUST_LOG=fc5mp_server=debug cargo run -- "$@" &
 SERVER_PID=$!
 
 echo "[fc5mp] Server ready. Ctrl+C to stop."
-echo "[fc5mp]   TLS:   0.0.0.0:${REST_PORT}"
+echo "[fc5mp]   TLS:   0.0.0.0:${REST_PORT}  (native, in-process)"
 echo "[fc5mp]   PRUDP: 0.0.0.0:6570"
 wait

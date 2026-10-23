@@ -1,0 +1,12 @@
+{
+  "states": {
+    "main_menu": ["main menu", "campaign", "arcade", "co-op", "options", "quit", "continue"],
+    "connecting": ["connecting", "please wait", "logging in", "loading profile"],
+    "login_error": ["maine-118", "error", "failed", "cannot connect", "connection lost", "unable to"],
+    "ubisoft_login": ["email", "password", "log in", "sign in", "ubisoft account"],
+    "online_lobby": ["players", "session", "invite", "lobby", "matchmaking"],
+    "loading": ["loading", "please wait"],
+    "paused": ["paused", "resume", "restart", "quit to desktop"]
+  },
+  "error_patterns": ["maine-\\d+", "error\\s*:?\\s*\\d+", "failed", "cannot", "unable"]
+}

@@ -90,4 +90,37 @@ void install_all(){
   // is P1.5b.
 #endif
 }
+
+void install_tls_known(){
+#if defined(_WIN32)
+  // RVAs of the static-OpenSSL entry points in the version-locked FC_m64.dll
+  // (sha 00833fae…af2), cross-checked by tests/host/test_targets.cpp. Using
+  // them directly avoids scanning the 250 MB image, which is prohibitively
+  // slow under Wine. The module identity MUST already be confirmed by the
+  // caller (version lock) before trusting these offsets.
+  constexpr uintptr_t RVA_SSL_READ    = 0x3dd0560;
+  constexpr uintptr_t RVA_SSL_WRITE   = 0x3dd09c0;
+  constexpr uintptr_t RVA_SSL_CONNECT = 0x3dcf330;
+
+  auto& w = fc5mp::client::sink();
+  HMODULE m = nullptr;
+  for(int i=0;i<200 && !m;i++){                    // up to ~20s
+    m = GetModuleHandleW(L"FC_m64.dll");
+    if(!m) Sleep(100);
+  }
+  if(!m){ w.write(cap::kind::MODULE_TIMEOUT, nullptr, 0); return; }
+  auto base = reinterpret_cast<uintptr_t>(m);
+
+  uint64_t a_read    = base + RVA_SSL_READ;
+  uint64_t a_write   = base + RVA_SSL_WRITE;
+  uint64_t a_connect = base + RVA_SSL_CONNECT;
+  w.write(cap::kind::SSL_READ_ADDR,    reinterpret_cast<const uint8_t*>(&a_read),    sizeof(a_read));
+  w.write(cap::kind::SSL_WRITE_ADDR,   reinterpret_cast<const uint8_t*>(&a_write),   sizeof(a_write));
+  w.write(cap::kind::SSL_CONNECT_ADDR, reinterpret_cast<const uint8_t*>(&a_connect), sizeof(a_connect));
+
+  fc5mp::tls::install_at(reinterpret_cast<void*>(a_read),
+                         reinterpret_cast<void*>(a_write),
+                         reinterpret_cast<void*>(a_connect));
+#endif
+}
 }

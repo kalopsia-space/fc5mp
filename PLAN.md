@@ -126,6 +126,49 @@ Get standard 2-player co-op working through our custom server.
 
 **Goal:** Game launches through Steam with our DLLs, hooks load, multiplayer traffic intercepted.
 
+> **Status 2026-10-19:** Game launches to main menu with real Ubisoft DLLs + our hooks
+> (stub-DLL path abandoned — Denuvo needs real Ubisoft Connect). **In-game HTTPS + REST
+> login now WORK end to end:** TLS detours install at known offsets, the handshake
+> completes, and the `verify_result=0x17c` patch gets libcurl past its post-handshake cert
+> check, so the game sends `POST /v3/profiles/sessions` and the server logs the login.
+> **Now blocked** one step later: the game fetches `/v2/applications/.../configuration`,
+> reads our response, then stops at Maine-118 without contacting any other host.
+> Full details: `docs/research/2026-10-19-tls-handshake-status.md`.
+>
+> **Update 2026-10-19 PM — "go after the real config" (Path A) results:**
+> - ✅ **Config is now byte-correct.** Replaced the OpenQuazal-adapted template with the
+>   genuine config extracted from the 2026-10-14 working capture (added the missing
+>   `configuration.custom.featuresSwitches` block). Content-Length matches the real 12934.
+>   (`server/src/rest/fc5_app_config.json`; `mercury.client_secret` blanked — inert, that
+>   host is redirected to us.)
+> - ✅ **Added the Ubisoft gateway response headers** the real server sends — `Ubi-TransactionId`,
+>   `Ubi-Forwarded-By`, `Server: openresty`, HSTS, `X-Frame-Options`, `X-Content-Type-Options`,
+>   `Content-Type: application/json; charset=utf-8` — via middleware in `server/src/rest/mod.rs`.
+> - ❌ **Neither unblocked the game.** It still does exactly login (#1) + config (#2), then stops.
+> - 🔎 **Port 4455 is a RED HERRING (corrected).** Earlier I suspected the launcher's local
+>   IPC on `127.0.0.1:4455` was the blocker. An A/B passthrough test disproved it: with our
+>   redirect OFF, the game goes **fully online to real Ubisoft** while 4455 stays
+>   connection-refused the whole time. 4455 is just harmless background overlay polling —
+>   **we do NOT need to emulate the launcher.**
+> - 📋 **The real wall:** the game reads our config and its SDK simply decides not to advance
+>   to request #3. The normal chronological order (from the capture) is: #1 login → #2 config →
+>   **#3 `GET /v1/profiles/me/populations`** → entities → events (msr-) → websocket → users →
+>   … → storm `/v1/router/19`. Our game never attempts #3.
+> - ⚠️ **Open anomaly:** `socat E I/O error` is logged right after config every run. We cannot
+>   yet tell if the game receives the *complete, valid* config body, because the client logs
+>   `ssl_connect`/`ssl_write` but **not** `ssl_read`.
+>
+> **→ NEXT STEP (where to resume):** Add `ssl_read` logging to the client
+> (`client/src/client/tls_hooks.cpp`) and relaunch. This single measurement disambiguates the
+> two remaining hypotheses: **(a)** the config response is being truncated/broken on delivery
+> (the socat error is real) vs **(b)** the game receives a perfect config and its SDK stops for
+> a content/logic reason. Secondary leads if delivery is clean: force HTTP keep-alive (the game
+> reused one fd for login+config but opened nothing for #3), or replace socat with the server's
+> built-in OpenSSL TLS (`tls-openssl` feature already in `Cargo.toml`) to rule out the socat I/O
+> error. Launch gotchas: repeated `kill -9` of FarCry5.exe wedges the Wine prefix — reset with
+> `wineserver -k` (kill orphan wine procs by PID via `pgrep -f '[F]arCry5'`; never
+> `pkill -f FarCry5`, it self-kills the shell).
+
 - [x] Fix version.dll proxy for Steam/Ubisoft Connect launch path
 - [x] Verify fc5mp-client.dll loads hooks without crashing (builds clean, runtime needs testing)
 - [x] Update Uplay stub exports using UplayServer reference (137 exports — 135 reference + 2 extras)

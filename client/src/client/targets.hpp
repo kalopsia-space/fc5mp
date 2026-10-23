@@ -16,4 +16,9 @@ std::vector<std::pair<size_t,size_t>> resolve(const uint8_t* image, size_t size)
 // short/empty capture is self-diagnosing (signature absent in the mapped image).
 std::vector<size_t> missing_indices(const std::vector<std::pair<size_t,size_t>>& resolved);
 void install_all();   // Windows: resolve in the loaded FC_m64.dll + log addresses
+// Windows fast path: install the TLS detours at the OpenSSL entry points using
+// the RVAs recorded for the version-locked FC_m64.dll build, skipping the full
+// signature scan (too slow under Wine). Safe only for that exact build; the
+// caller is responsible for confirming the module identity (version lock).
+void install_tls_known();
 }

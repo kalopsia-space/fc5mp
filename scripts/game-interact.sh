@@ -3,11 +3,13 @@
 # Provides screenshot, click, key, and type commands for automating game testing
 set -euo pipefail
 
-MONITOR="DP-3"
-MONITOR_X=5760
-MONITOR_Y=0
-MONITOR_W=1920
-MONITOR_H=1080
+MONITOR="${FC5MP_MONITOR:-DP-3}"
+# Resolve the monitor's position dynamically (layout changes when HDMI is off)
+read -r MONITOR_X MONITOR_Y MONITOR_W MONITOR_H < <(hyprctl monitors -j 2>/dev/null | python3 -c '
+import sys,json
+for m in json.load(sys.stdin):
+    if m["name"]==sys.argv[1]: print(m["x"],m["y"],m["width"],m["height"])' "$MONITOR" 2>/dev/null || echo "5760 0 1920 1080")
+MONITOR_X=${MONITOR_X:-5760}; MONITOR_Y=${MONITOR_Y:-0}; MONITOR_W=${MONITOR_W:-1920}; MONITOR_H=${MONITOR_H:-1080}
 SCRATCHPAD="/tmp/claude-1000/-home-kalopsia-fc5mp"
 SCREENSHOT_DIR="$SCRATCHPAD/screenshots"
 mkdir -p "$SCREENSHOT_DIR"

@@ -1,0 +1,17 @@
+name: login_smoke
+description: Launch game, wait for main menu, screenshot, collect logs.
+steps:
+  - action: ensure_server
+    timeout_sec: 30
+  - action: launch
+    mode: wine
+  - action: wait
+    seconds: 20
+  - action: wait_for_state
+    state: main_menu
+    timeout_sec: 90
+  - action: screenshot
+    name: main_menu
+  - action: classify
+  - action: collect_logs
+  - action: kill_game

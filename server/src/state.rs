@@ -28,9 +28,25 @@ pub enum StateError {
     PlayerNotFound,
 }
 
+#[derive(Debug, Clone)]
+pub struct Entity {
+    pub entity_id: Uuid,
+    pub profile_id: Uuid,
+    pub space_id: Option<String>,
+    pub name: String,
+    pub entity_type: String,
+    pub obj: serde_json::Value,
+    pub revision: u64,
+    pub last_modified: String,
+}
+
 struct Inner {
     players: HashMap<Uuid, Player>,
     sessions: HashMap<Uuid, Session>,
+    /// Maps Ubi-SessionId string → player profile UUID
+    ubi_sessions: HashMap<String, Uuid>,
+    /// Entity storage: entity_id → Entity
+    entities: HashMap<Uuid, Entity>,
     max_players: u8,
     stable_profile_id: Option<Uuid>,
 }
@@ -43,6 +59,8 @@ impl ServerState {
         Self(Arc::new(RwLock::new(Inner {
             players: HashMap::new(),
             sessions: HashMap::new(),
+            ubi_sessions: HashMap::new(),
+            entities: HashMap::new(),
             max_players,
             stable_profile_id: None,
         })))
@@ -117,6 +135,75 @@ impl ServerState {
 
     pub fn list_sessions(&self) -> Vec<Session> {
         self.0.read().unwrap().sessions.values().cloned().collect()
+    }
+
+    /// Register a Ubi-SessionId → profile mapping (called at login).
+    pub fn register_ubi_session(&self, session_id: String, profile_id: Uuid) {
+        self.0.write().unwrap().ubi_sessions.insert(session_id, profile_id);
+    }
+
+    /// Look up which player owns a Ubi-SessionId.
+    pub fn resolve_ubi_session(&self, session_id: &str) -> Option<Uuid> {
+        self.0.read().unwrap().ubi_sessions.get(session_id).copied()
+    }
+
+    /// Look up multiple players by their profile IDs.
+    pub fn get_players(&self, ids: &[Uuid]) -> Vec<Player> {
+        let inner = self.0.read().unwrap();
+        ids.iter().filter_map(|id| inner.players.get(id).cloned()).collect()
+    }
+
+    /// Store or update an entity. Returns the stored entity.
+    pub fn put_entity(&self, profile_id: Uuid, space_id: Option<String>, name: String, entity_type: String, obj: serde_json::Value) -> Entity {
+        let mut inner = self.0.write().unwrap();
+        // Check if entity with same profile+name already exists
+        let existing = inner.entities.values().find(|e| e.profile_id == profile_id && e.name == name).map(|e| (e.entity_id, e.revision));
+        let (entity_id, revision) = match existing {
+            Some((id, rev)) => (id, rev + 1),
+            None => (Uuid::new_v4(), 1),
+        };
+        let now = {
+            use std::time::{SystemTime, UNIX_EPOCH};
+            let secs = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_secs();
+            format!("{}Z", secs)
+        };
+        let entity = Entity {
+            entity_id,
+            profile_id,
+            space_id,
+            name,
+            entity_type,
+            obj,
+            revision,
+            last_modified: now,
+        };
+        inner.entities.insert(entity_id, entity.clone());
+        entity
+    }
+
+    /// Get entities for a profile, optionally filtered by type.
+    pub fn get_entities(&self, profile_id: &Uuid, entity_type: Option<&str>) -> Vec<Entity> {
+        let inner = self.0.read().unwrap();
+        inner.entities.values()
+            .filter(|e| e.profile_id == *profile_id)
+            .filter(|e| entity_type.map_or(true, |t| e.entity_type == t))
+            .cloned()
+            .collect()
+    }
+
+    /// Get entities for a space, optionally filtered by type.
+    pub fn get_space_entities(&self, space_id: &str, entity_type: Option<&str>) -> Vec<Entity> {
+        let inner = self.0.read().unwrap();
+        inner.entities.values()
+            .filter(|e| e.space_id.as_deref() == Some(space_id))
+            .filter(|e| entity_type.map_or(true, |t| e.entity_type == t))
+            .cloned()
+            .collect()
+    }
+
+    /// Get a single entity by ID.
+    pub fn get_entity(&self, entity_id: &Uuid) -> Option<Entity> {
+        self.0.read().unwrap().entities.get(entity_id).cloned()
     }
 }
 

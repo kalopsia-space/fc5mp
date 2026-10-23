@@ -26,6 +26,8 @@ void set_tls_ready();
 bool tls_ready();
 // Mark a socket as REST-redirected (called from connect hook).
 void mark_redirected(uint64_t sock);
+// Remove a socket from the redirected set (called from closesocket hook).
+void unmark_redirected(uint64_t sock);
 // True if socket was marked as REST-redirected.
 bool is_redirected(uint64_t sock);
 // Extract socket fd from an OpenSSL 1.0.2 SSL* context.

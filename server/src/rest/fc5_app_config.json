@@ -1,0 +1,664 @@
+{
+  "configuration": {
+    "custom": {
+      "resources": [
+        {
+          "name": "mercury.base_url",
+          "value": "https://mercury.ubi.com/native/"
+        },
+        {
+          "name": "mercury.client_id",
+          "value": "5a743893ef3aa574a159d14b"
+        },
+        {
+          "name": "mercury.client_secret",
+          "value": ""
+        },
+        {
+          "name": "payments_page",
+          "value": "https://payments.ubi.com/FC5/"
+        },
+        {
+          "name": "sso.base_url",
+          "value": "https://connect.ubi.com/"
+        },
+        {
+          "name": "uplaypc.shopurl",
+          "value": "https://store.ubi.com/upc/far-cry-5-dlc"
+        },
+        {
+          "name": "steam.shopurl",
+          "value": "http://store.steampowered.com/dlc/552520"
+        }
+      ],
+      "featuresSwitches": [
+        {
+          "name": "StormRouter",
+          "value": true
+        },
+        {
+          "name": "HostMigration",
+          "value": true
+        },
+        {
+          "name": "LiveEvents",
+          "value": true
+        },
+        {
+          "name": "UGC",
+          "value": true
+        },
+        {
+          "name": "AntiCheatKillSwitch",
+          "value": false
+        },
+        {
+          "name": "HighPingKick",
+          "value": true
+        },
+        {
+          "name": "HighPingKickOnHost",
+          "value": true
+        }
+      ]
+    },
+    "featuresSwitches": [
+      {
+        "name": "ApplicationMetadata",
+        "value": true
+      },
+      {
+        "name": "ApplicationUsed",
+        "value": true
+      },
+      {
+        "name": "ClubActions",
+        "value": true
+      },
+      {
+        "name": "ClubApplication",
+        "value": true
+      },
+      {
+        "name": "ClubBadges",
+        "value": true
+      },
+      {
+        "name": "ClubChallenges",
+        "value": true
+      },
+      {
+        "name": "ClubConditions",
+        "value": true
+      },
+      {
+        "name": "ClubDynamicPanel",
+        "value": true
+      },
+      {
+        "name": "ClubFriends",
+        "value": true
+      },
+      {
+        "name": "ClubRewards",
+        "value": true
+      },
+      {
+        "name": "ClubUnits",
+        "value": true
+      },
+      {
+        "name": "ClubXps",
+        "value": true
+      },
+      {
+        "name": "CreateSession",
+        "value": true
+      },
+      {
+        "name": "EntitiesProfile",
+        "value": true
+      },
+      {
+        "name": "EntitiesSpace",
+        "value": true
+      },
+      {
+        "name": "Event",
+        "value": true
+      },
+      {
+        "name": "ExtendSession",
+        "value": true
+      },
+      {
+        "name": "FixAccountIssues",
+        "value": true
+      },
+      {
+        "name": "FriendsLookup",
+        "value": true
+      },
+      {
+        "name": "FriendsRequest",
+        "value": true
+      },
+      {
+        "name": "HttpClient",
+        "value": true
+      },
+      {
+        "name": "LeaderboardMe",
+        "value": true
+      },
+      {
+        "name": "LeaderboardProfiles",
+        "value": true
+      },
+      {
+        "name": "LeaderboardSpaces",
+        "value": true
+      },
+      {
+        "name": "MobileExtensionProfilesExternal",
+        "value": true
+      },
+      {
+        "name": "MobileExtensionUsersManagement",
+        "value": true
+      },
+      {
+        "name": "News",
+        "value": true
+      },
+      {
+        "name": "NotificationRequestConnections",
+        "value": true
+      },
+      {
+        "name": "NotificationSend",
+        "value": true
+      },
+      {
+        "name": "NotificationSendBatch",
+        "value": true
+      },
+      {
+        "name": "NotificationSendNoBroker",
+        "value": true
+      },
+      {
+        "name": "NotificationWebsocket",
+        "value": true
+      },
+      {
+        "name": "Populations",
+        "value": true
+      },
+      {
+        "name": "PopulationsAutomaticFetch",
+        "value": true
+      },
+      {
+        "name": "PrimaryStore",
+        "value": true
+      },
+      {
+        "name": "PrimaryStoreAutomaticFetch",
+        "value": true
+      },
+      {
+        "name": "Profiles",
+        "value": true
+      },
+      {
+        "name": "SecondaryStore",
+        "value": true
+      },
+      {
+        "name": "Socialfeed",
+        "value": true
+      },
+      {
+        "name": "Stats",
+        "value": true
+      },
+      {
+        "name": "tg_CrashReport",
+        "value": true
+      },
+      {
+        "name": "Users",
+        "value": true
+      },
+      {
+        "name": "UsersCreateAndLink",
+        "value": true
+      },
+      {
+        "name": "UsersLegalOptins",
+        "value": true
+      },
+      {
+        "name": "WebSocketClient",
+        "value": true
+      },
+      {
+        "name": "ClubProgressions",
+        "value": true
+      }
+    ],
+    "gatewayResources": [
+      {
+        "url": "https://msr-{env}public-ubiservices.ubi.com/{version}/profiles/connections",
+        "name": "all_connections",
+        "version": 1
+      },
+      {
+        "url": "https://msr-{env}public-ubiservices.ubi.com/{version}/profiles/applications",
+        "name": "all_profiles/applications",
+        "version": 2
+      },
+      {
+        "url": "https://{env}public-ubiservices.ubi.com/{version}/profiles/entities",
+        "name": "all_profiles/entities",
+        "version": 2
+      },
+      {
+        "url": "https://msr-{env}public-ubiservices.ubi.com/{version}/profiles/stats",
+        "name": "all_profiles/stats",
+        "version": 1
+      },
+      {
+        "url": "https://{env}public-ubiservices.ubi.com/{version}/spaces/entities",
+        "name": "all_spaces/entities",
+        "version": 2
+      },
+      {
+        "url": "https://{env}public-ubiservices.ubi.com/{version}/spaces/items",
+        "name": "all_spaces/items",
+        "version": 1
+      },
+      {
+        "url": "https://{env}public-ubiservices.ubi.com/{version}/spaces/offers",
+        "name": "all_spaces/offers",
+        "version": 1
+      },
+      {
+        "url": "https://msr-{env}public-ubiservices.ubi.com/{version}/profiles/wall",
+        "name": "all_walls",
+        "version": 1
+      },
+      {
+        "url": "https://{env}public-ubiservices.ubi.com/{version}/applications",
+        "name": "applicationsMetadata",
+        "version": 1
+      },
+      {
+        "url": "https://msr-{env}public-ubiservices.ubi.com/{version}/certificates",
+        "name": "certificates",
+        "version": 1
+      },
+      {
+        "url": "https://msr-{env}public-ubiservices.ubi.com/{version}/spaces/{spaceId}/configs/events",
+        "name": "configs/events",
+        "version": 2
+      },
+      {
+        "url": "https://msr-{env}public-ubiservices.ubi.com/{version}/profiles/{profileId}/connections",
+        "name": "connections",
+        "version": 1
+      },
+      {
+        "url": "https://msr-{env}public-ubiservices.ubi.com/{version}/profiles/{profileId}/events",
+        "name": "events",
+        "version": 2
+      },
+      {
+        "url": "https://msr-{env}public-ubiservices.ubi.com/{version}/profiles/me/friends",
+        "name": "friends",
+        "version": 2
+      },
+      {
+        "url": "https://msr-{env}public-ubiservices.ubi.com/{version}/profiles/me/news",
+        "name": "news",
+        "version": 1
+      },
+      {
+        "url": "https://{env}public-ubiservices.ubi.com/{version}/profiles/me/populations",
+        "name": "populations",
+        "version": 1
+      },
+      {
+        "url": "https://{env}public-ubiservices.ubi.com/{version}/profiles",
+        "name": "profiles",
+        "version": 2
+      },
+      {
+        "url": "https://msr-{env}public-ubiservices.ubi.com/{version}/profiles/{profileId}/actions",
+        "name": "profiles/actions",
+        "version": 1
+      },
+      {
+        "url": "https://msr-{env}public-ubiservices.ubi.com/{version}/profiles/me/applications",
+        "name": "profiles/applications",
+        "version": 2
+      },
+      {
+        "url": "https://{env}public-ubiservices.ubi.com/v2/spaces/global/ubiconnect/challenges/api/legacy/empty",
+        "name": "profiles/challenges",
+        "version": 2
+      },
+      {
+        "url": "https://{env}public-ubiservices.ubi.com/{version}/profiles/{profileId}/entities",
+        "name": "profiles/entities",
+        "version": 2
+      },
+      {
+        "url": "https://{env}public-ubiservices.ubi.com/{version}/profiles/{profileId}/inventory",
+        "name": "profiles/inventory",
+        "version": 1
+      },
+      {
+        "url": "https://{env}public-ubiservices.ubi.com/{version}/profiles/{profileId}/inventory/expiredDetails",
+        "name": "profiles/inventory/expiredDetails",
+        "version": 1
+      },
+      {
+        "url": "https://{env}public-ubiservices.ubi.com/{version}/profiles/ranks",
+        "name": "profiles/leaderboard",
+        "version": 1
+      },
+      {
+        "url": "https://{env}public-ubiservices.ubi.com/v2/spaces/global/ubiconnect/challenges/api/legacy/empty",
+        "name": "profiles/me/communityChallenges",
+        "version": 2
+      },
+      {
+        "url": "https://msr-{env}public-ubiservices.ubi.com/{version}/profiles/me/events",
+        "name": "profiles/me/events",
+        "version": 3
+      },
+      {
+        "url": "https://{env}public-ubiservices.ubi.com/{version}/profiles/me/inventory/primarystore",
+        "name": "profiles/me/inventory/primarystore",
+        "version": 1
+      },
+      {
+        "url": "https://{env}public-ubiservices.ubi.com/{version}/profiles/me/ranks",
+        "name": "profiles/me/leaderboard",
+        "version": 1
+      },
+      {
+        "url": "https://msr-{env}public-ubiservices.ubi.com/{version}/profiles/{profileId}/notifications",
+        "name": "profiles/notifications",
+        "version": 2
+      },
+      {
+        "url": "https://{env}public-ubiservices.ubi.com/{version}/profiles/notifications",
+        "name": "profiles/notificationsBatch",
+        "version": 2
+      },
+      {
+        "url": "https://msr-{env}public-ubiservices.ubi.com/{version}/profiles/{profileId}/rewards",
+        "name": "profiles/rewards",
+        "version": 1
+      },
+      {
+        "url": "https://{env}public-ubiservices.ubi.com/{version}/profiles/{profileId}/stats",
+        "name": "profiles/stats",
+        "version": 1
+      },
+      {
+        "url": "https://msr-{env}public-ubiservices.ubi.com/{version}/profiles/statscard",
+        "name": "profiles/statsCard",
+        "version": 1
+      },
+      {
+        "url": "https://{env}public-ubiservices.ubi.com/{version}/profiles/me/remotelog",
+        "name": "remote_logs",
+        "version": 1
+      },
+      {
+        "url": "https://{env}public-ubiservices.ubi.com/{version}/profiles/me/remotelog",
+        "name": "remote_logs_custom",
+        "version": 1
+      },
+      {
+        "url": "https://msr-{env}public-ubiservices.ubi.com/{version}/spaces/{spaceId}/sandboxes",
+        "name": "sandboxes",
+        "version": 0
+      },
+      {
+        "url": "https://msr-{env}public-ubiservices.ubi.com/{version}/spaces/{spaceId}/actions",
+        "name": "spaces/actions",
+        "version": 1
+      },
+      {
+        "url": "https://{env}public-ubiservices.ubi.com/v2/spaces/global/ubiconnect/challenges/api/legacy/empty",
+        "name": "spaces/challengepools",
+        "version": 3
+      },
+      {
+        "url": "https://{env}public-ubiservices.ubi.com/v2/spaces/global/ubiconnect/challenges/api/legacy/empty",
+        "name": "spaces/challenges",
+        "version": 2
+      },
+      {
+        "url": "https://{env}public-ubiservices.ubi.com/v2/spaces/global/ubiconnect/challenges/api/legacy/empty",
+        "name": "spaces/communityChallenges",
+        "version": 2
+      },
+      {
+        "url": "https://{env}public-ubiservices.ubi.com/{version}/spaces/{spaceId}/configs/primarystore",
+        "name": "spaces/configs/primarystore",
+        "version": 1
+      },
+      {
+        "url": "https://{env}public-ubiservices.ubi.com/{version}/spaces/{spaceId}/entities",
+        "name": "spaces/entities",
+        "version": 2
+      },
+      {
+        "url": "https://{env}public-ubiservices.ubi.com/{version}/spaces/{spaceId}/items",
+        "name": "spaces/items",
+        "version": 1
+      },
+      {
+        "url": "https://{env}public-ubiservices.ubi.com/{version}/spaces/{spaceId}/leaderboards",
+        "name": "spaces/leaderboard",
+        "version": 1
+      },
+      {
+        "url": "https://msr-{env}public-ubiservices.ubi.com/{version}/spaces/news",
+        "name": "spaces/news",
+        "version": 1
+      },
+      {
+        "url": "https://{env}public-ubiservices.ubi.com/{version}/spaces/{spaceId}/offers",
+        "name": "spaces/offers",
+        "version": 1
+      },
+      {
+        "url": "https://msr-{env}public-ubiservices.ubi.com/{version}/spaces/{spaceId}/rewards",
+        "name": "spaces/rewards",
+        "version": 1
+      },
+      {
+        "url": "https://msr-{env}public-ubiservices.ubi.com/{version}/spaces/{spaceId}/communitystats",
+        "name": "spaces/stats",
+        "version": 1
+      },
+      {
+        "url": "https://msr-{env}public-ubiservices.ubi.com/{version}/spaces/{spaceId}/communitystatscard",
+        "name": "spaces/statsCard",
+        "version": 1
+      },
+      {
+        "url": "https://msr-{env}public-ubiservices.ubi.com/{version}/profiles/{profileId}/wall",
+        "name": "wall",
+        "version": 1
+      },
+      {
+        "url": "https://msr-{env}public-ubiservices.ubi.com/{version}/profiles/wall/{postId}/comments",
+        "name": "wall/comments",
+        "version": 1
+      },
+      {
+        "url": "https://msr-{env}public-ubiservices.ubi.com/{version}/profiles/wall/{postId}/likes",
+        "name": "wall/likes",
+        "version": 1
+      },
+      {
+        "url": "https://msr-{env}public-ubiservices.ubi.com/{version}/profiles/wall/{postId}",
+        "name": "wall/post",
+        "version": 1
+      },
+      {
+        "url": "https://{env}public-ubiservices.ubi.com/v2/spaces/global/ubiconnect/challenges/api/legacy/empty",
+        "name": "profiles/profileChallenges",
+        "version": 3
+      },
+      {
+        "name": "WebSocketUrl",
+        "url": "wss://public-ws-ubiservices.ubi.com/v1/websocket",
+        "deprecated": false
+      },
+      {
+        "name": "WebSocketUrl2",
+        "url": "wss://public-ws-ubiservices.ubi.com/v2/websocket",
+        "deprecated": false
+      }
+    ],
+    "storm": {
+      "detectUrl1": "lb-ne1z-prod-mpe-detect01.ubisoft.com:11000",
+      "detectUrl2": "lb-ne1z-prod-mpe-detect02.ubisoft.com:11000",
+      "traversalUrl": "lb-ne1z-prod-mpe-traversal.ubisoft.com:11005",
+      "routerProvisioningUrl": "https://apac-storm.ubi.com/v1/router;https://emea-storm.ubi.com/v1/router;https://ncsa-storm.ubi.com/v1/router;https://ap-southeast-2-storm.ubi.com/v1/router",
+      "detectConfig": "EnableDebug=false;ValidateDetect=true"
+    },
+    "sdkConfig": {
+      "remoteLogs": {
+        "ubiservicesLogLevel": "Error",
+        "prodLogLevel": "Info"
+      },
+      "lspPort": 1200,
+      "httpSafetySleepTime": 0,
+      "keepAliveTimeoutMin": 10,
+      "popEventsTimeoutMsec": 5000,
+      "timeoutSec": 15,
+      "connectionPingIntervalSec": 30,
+      "httpParam": {
+        "maxCount": 3,
+        "retryParam": {
+          "incrementFactorMsec": 5000,
+          "initialDelayMsec": 5000,
+          "randomDelayMsec": 5000
+        },
+        "timeoutParam": {
+          "initialDelayMsec": 15000
+        }
+      },
+      "httpRetry": {
+        "incrementFactorMsec": 5000,
+        "initialDelayMsec": 5000,
+        "maxCount": 3,
+        "randomDelayMsec": 5000
+      },
+      "websocketParam": {
+        "maxCount": 10000,
+        "retryParam": {
+          "incrementFactorMsec": 5000,
+          "initialDelayMsec": 5000,
+          "randomDelayMsec": 5000
+        },
+        "timeoutParam": {
+          "initialDelayMsec": 15000
+        }
+      },
+      "websocketRetry": {
+        "incrementFactorMsec": 5000,
+        "initialDelayMsec": 5000,
+        "maxCount": 10000,
+        "randomDelayMsec": 5000
+      }
+    },
+    "clubServices": [
+      {
+        "url": "http://validation.ubi.com/webservices/uplay/{culture}/avatar/public/{userId}/default/{size}.png",
+        "name": "AvatarsUrl"
+      },
+      {
+        "url": "http://static2.cdn.ubi.com/gamesites/uplay/v20/api/Avatars/thumbs/default.jpg",
+        "name": "DefaultAvatar146Url"
+      },
+      {
+        "url": "http://static2.cdn.ubi.com/gamesites/uplay/201211261811/img/avatar/hero_256.png",
+        "name": "DefaultAvatar256Url"
+      },
+      {
+        "url": "ttp://static2.cdn.ubi.com/gamesites/uplay/201211261811/img/avatar/no_tall.png",
+        "name": "DefaultAvatarTallUrl"
+      },
+      {
+        "url": "http://static8.ubi.com/private/{env}/u/Uplay/",
+        "name": "MovieBaseUrl"
+      }
+    ],
+    "platformConfig": {
+      "uplayGameCode": "",
+      "applicationId": "e0b29a98-ce38-4bc7-96ee-9d20e793e9e3",
+      "spaceId": "f40e304d-8e8d-4343-8270-d06487c35add",
+      "platform": "PC",
+      "environment": "PROD"
+    },
+    "events": {
+      "queues": [
+        {
+          "name": "A",
+          "sendPeriodMilliseconds": 30000
+        },
+        {
+          "name": "B",
+          "sendPeriodMilliseconds": 30000
+        },
+        {
+          "name": "C",
+          "sendPeriodMilliseconds": 30000
+        }
+      ],
+      "tags": [],
+      "comment": null
+    },
+    "punch": {
+      "detectUrl1": "lb-ne1z-prod-mpe-detect01.ubisoft.com:11000",
+      "detectUrl2": "lb-ne1z-prod-mpe-detect02.ubisoft.com:11000",
+      "traversalUrl": "lb-ne1z-prod-mpe-traversal.ubisoft.com:11005",
+      "routerProvisioningUrl": "https://apac-storm.ubi.com/v1/router;https://emea-storm.ubi.com/v1/router;https://ncsa-storm.ubi.com/v1/router;https://ap-southeast-2-storm.ubi.com/v1/router",
+      "detectConfig": "EnableDebug=false;ValidateDetect=true"
+    },
+    "uplayServices": [
+      {
+        "url": "http://validation.ubi.com/webservices/uplay/{culture}/avatar/public/{userId}/default/{size}.png",
+        "name": "AvatarsUrl"
+      },
+      {
+        "url": "http://static2.cdn.ubi.com/gamesites/uplay/v20/api/Avatars/thumbs/default.jpg",
+        "name": "DefaultAvatar146Url"
+      },
+      {
+        "url": "http://static2.cdn.ubi.com/gamesites/uplay/201211261811/img/avatar/hero_256.png",
+        "name": "DefaultAvatar256Url"
+      },
+      {
+        "url": "ttp://static2.cdn.ubi.com/gamesites/uplay/201211261811/img/avatar/no_tall.png",
+        "name": "DefaultAvatarTallUrl"
+      },
+      {
+        "url": "http://static8.ubi.com/private/{env}/u/Uplay/",
+        "name": "MovieBaseUrl"
+      }
+    ]
+  },
+  "relatedPopulations": []
+}

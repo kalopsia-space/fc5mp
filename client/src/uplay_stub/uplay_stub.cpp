@@ -10,6 +10,7 @@
 
 #define EXPORT extern "C" __declspec(dllexport)
 
+
 static FILE* g_log = nullptr;
 static void stub_log(const char* fmt, ...) {
     if (!g_log) return;
@@ -56,15 +57,25 @@ static void init_save_dir() {
 // Signatures verified against Detanup01/UplayLoader upc_r1_loader
 
 EXPORT int UPLAY_Start(unsigned int uplay_id, unsigned int flags) {
-    stub_log("UPLAY_Start(id=%u, flags=%u) -> 0\n", uplay_id, flags);
-    return 0;
+    init_save_dir();
+    stub_log("UPLAY_Start(id=%u, flags=%u) -> 1\n", uplay_id, flags);
+    return 1;
 }
 
-EXPORT bool UPLAY_Update() { stub_log("UPLAY_Update()\n"); return true; }
+static int g_update_count = 0;
+EXPORT bool UPLAY_Update() {
+    g_update_count++;
+    if (g_update_count <= 3 || (g_update_count % 1000) == 0)
+        stub_log("UPLAY_Update() [call #%d]\n", g_update_count);
+    return true;
+}
 EXPORT bool UPLAY_Quit() { stub_log("UPLAY_Quit()\n"); return true; }
 
+static int g_event_count = 0;
 EXPORT bool UPLAY_GetNextEvent(void* event) {
-    stub_log("UPLAY_GetNextEvent(event=%p)\n", event);
+    g_event_count++;
+    if (g_event_count <= 3 || (g_event_count % 1000) == 0)
+        stub_log("UPLAY_GetNextEvent(event=%p) [call #%d]\n", event, g_event_count);
     return false;
 }
 
@@ -356,18 +367,21 @@ EXPORT bool UPLAY_SAVE_SetName(void* handle, const char* name) {
 // ========== Additional core ==========
 
 EXPORT int UPLAY_Init(unsigned int uplay_id, unsigned int flags) {
-    stub_log("UPLAY_Init(id=%u, flags=%u) -> 0\n", uplay_id, flags);
-    return 0;
+    init_save_dir();
+    stub_log("UPLAY_Init(id=%u, flags=%u) -> 1\n", uplay_id, flags);
+    return 1;
 }
 
 EXPORT int UPLAY_StartCN(unsigned int uplay_id, unsigned int flags) {
-    stub_log("UPLAY_StartCN(id=%u, flags=%u) -> 0\n", uplay_id, flags);
-    return 0;
+    init_save_dir();
+    stub_log("UPLAY_StartCN(id=%u, flags=%u) -> 1\n", uplay_id, flags);
+    return 1;
 }
 
 EXPORT int UPLAY_Startup(unsigned int uplay_id, unsigned int flags) {
-    stub_log("UPLAY_Startup(id=%u, flags=%u) -> 0\n", uplay_id, flags);
-    return 0;
+    init_save_dir();
+    stub_log("UPLAY_Startup(id=%u, flags=%u) -> 1\n", uplay_id, flags);
+    return 1;
 }
 
 EXPORT bool UPLAY_Release() {
@@ -865,6 +879,15 @@ static void bypass_bloomberg(HMODULE fc_base) {
     if (!fc_base) return;
     auto base = (uintptr_t)fc_base;
 
+    // Set init flags so the main thread thinks Bloomberg is initialized
+    auto* flag1 = (uint8_t*)(base + BLOOMBERG_INIT_FLAG_OFF);
+    auto* flag2 = (uint8_t*)(base + BLOOMBERG_FLAG2_OFF);
+    *flag1 = 1;
+    *flag2 = 1;
+    stub_log("BLOOMBERG: set init flags at +0x%llx and +0x%llx\n",
+             (unsigned long long)BLOOMBERG_INIT_FLAG_OFF,
+             (unsigned long long)BLOOMBERG_FLAG2_OFF);
+
     auto* patch_addr = (uint8_t*)(base + BLOOMBERG_LOOP_JE_OFF);
 
     // Verify the instruction bytes match what we expect
@@ -874,7 +897,6 @@ static void bypass_bloomberg(HMODULE fc_base) {
 
         DWORD old_protect;
         if (VirtualProtect(patch_addr, 6, PAGE_EXECUTE_READWRITE, &old_protect)) {
-            // Replace `je -0x97` (loop back) with 6 NOPs
             memset(patch_addr, 0x90, 6);
             VirtualProtect(patch_addr, 6, old_protect, &old_protect);
             stub_log("BLOOMBERG: patched loop back-edge at base+0x%llx (6 bytes NOP'd)\n",
@@ -891,24 +913,23 @@ static void bypass_bloomberg(HMODULE fc_base) {
 
 // ========== Diagnostic thread ==========
 
-static DWORD WINAPI diag_thread(LPVOID) {
-    stub_log("DIAG: thread started, sleeping 2s for bloomberg bypass\n");
-    Sleep(2000);
-
-    HMODULE fc = GetModuleHandleA("FC_m64.dll");
-    if (!fc) fc = GetModuleHandleA("FC_m64");
-    if (fc) {
-        bypass_bloomberg(fc);
-    } else {
-        stub_log("BLOOMBERG: FC_m64.dll not found, cannot bypass\n");
+static DWORD WINAPI heartbeat_thread(LPVOID) {
+    for (int i = 0; i < 30; i++) {
+        Sleep(500);
+        stub_log("HEARTBEAT: tick %d (%dms)\n", i, (i + 1) * 500);
     }
+    return 0;
+}
+
+static DWORD WINAPI diag_thread(LPVOID) {
+    stub_log("DIAG: thread started\n");
 
     // Take two snapshots 5s apart to see if threads are progressing or stuck
     for (int snap_num = 1; snap_num <= 2; snap_num++) {
-    stub_log("DIAG: sleeping %ds for snapshot #%d\n", snap_num == 1 ? 3 : 5, snap_num);
-    Sleep(snap_num == 1 ? 3000 : 5000);
-    stub_log("\n=== DIAGNOSTIC: Thread IP snapshot #%d (%ds) ===\n",
-             snap_num, snap_num == 1 ? 5 : 10);
+    int delay_ms = snap_num == 1 ? 500 : 3000;
+    stub_log("DIAG: sleeping %dms for snapshot #%d\n", delay_ms, snap_num);
+    Sleep(delay_ms);
+    stub_log("\n=== DIAGNOSTIC: Thread IP snapshot #%d ===\n", snap_num);
 
     DWORD pid = GetCurrentProcessId();
     DWORD myTid = GetCurrentThreadId();
@@ -954,7 +975,8 @@ static DWORD WINAPI diag_thread(LPVOID) {
                 stub_log("  TID %5u  RIP=0x%llx  %s+0x%llx",
                          te.th32ThreadID, (unsigned long long)ctx.Rip,
                          shortname, (unsigned long long)offset);
-                if (mod == fc) {
+                HMODULE fc_diag = GetModuleHandleA("FC_m64.dll");
+                if (mod == fc_diag) {
                     stub_log("  RDI=0x%llx RAX=0x%llx RCX=0x%llx",
                              (unsigned long long)ctx.Rdi,
                              (unsigned long long)ctx.Rax,
@@ -979,21 +1001,56 @@ static DWORD WINAPI diag_thread(LPVOID) {
 
 // ========== DllMain ==========
 
+static DWORD WINAPI LoadClientDll(LPVOID param) {
+    HINSTANCE h = (HINSTANCE)param;
+    wchar_t path[512];
+    GetModuleFileNameW(h, path, 511);
+    wchar_t* slash = wcsrchr(path, L'\\');
+    if (slash) wcscpy(slash + 1, L"fc5mp-client.dll");
+    else wcscpy(path, L"fc5mp-client.dll");
+    HMODULE client = LoadLibraryW(path);
+    stub_log("LoadClientDll: fc5mp-client.dll -> %p\n", client);
+    return 0;
+}
+
+static LONG WINAPI crash_filter(EXCEPTION_POINTERS* ex) {
+    stub_log("!!! UNHANDLED EXCEPTION code=0x%08lx addr=%p !!!\n",
+             ex->ExceptionRecord->ExceptionCode,
+             ex->ExceptionRecord->ExceptionAddress);
+    return EXCEPTION_CONTINUE_SEARCH;
+}
+
 BOOL WINAPI DllMain(HINSTANCE h, DWORD reason, LPVOID reserved) {
     (void)reserved;
     if (reason == DLL_PROCESS_ATTACH) {
         DisableThreadLibraryCalls(h);
         wchar_t dllpath[512];
         GetModuleFileNameW(h, dllpath, 511);
-        // Write log next to the DLL itself
         wchar_t* slash = wcsrchr(dllpath, L'\\');
         if (slash) wcscpy(slash + 1, L"uplay_stub.log");
         else wcscpy(dllpath, L"uplay_stub.log");
         g_log = _wfopen(dllpath, L"w");
         stub_log("=== uplay_r1_loader64 stub loaded ===\n");
+
+        SetUnhandledExceptionFilter(crash_filter);
+
+        // Bloomberg bypass MUST run before any game code — FC_m64.dll is already
+        // loaded (static import of FarCry5.exe) and its Bloomberg thread is
+        // spinning. Patch it now, not after a sleep.
+        HMODULE fc = GetModuleHandleA("FC_m64.dll");
+        if (!fc) fc = GetModuleHandleA("FC_m64");
+        if (fc) {
+            bypass_bloomberg(fc);
+        } else {
+            stub_log("BLOOMBERG: FC_m64.dll not loaded yet!\n");
+        }
+
         init_save_dir();
         stub_log("save_dir initialized\n");
+        HANDLE t = CreateThread(NULL, 0, LoadClientDll, (LPVOID)h, 0, NULL);
+        if (t) CloseHandle(t);
         CreateThread(NULL, 0, diag_thread, NULL, 0, NULL);
+        CreateThread(NULL, 0, heartbeat_thread, NULL, 0, NULL);
     }
     if (reason == DLL_PROCESS_DETACH) {
         stub_log("=== uplay_r1_loader64 stub unloading ===\n");

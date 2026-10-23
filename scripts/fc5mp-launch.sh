@@ -15,17 +15,18 @@ REDIRECT_CONF="$WINEPREFIX/drive_c/users/steamuser/.fc5mp/redirect.toml"
 install_steam() {
     mkdir -p "$BACKUP_DIR"
 
+    # Back up originals (only first time)
     for f in uplay_r1_loader64.dll dbdata.dll; do
         [ -f "$GAME_BIN/$f" ] && [ ! -f "$BACKUP_DIR/$f" ] && cp "$GAME_BIN/$f" "$BACKUP_DIR/$f"
     done
 
+    # Only install our proxy + hooks DLL; keep real Ubisoft DLLs for DRM
     cp "$BUILD/version.dll"              "$GAME_BIN/"
     cp "$BUILD/fc5mp-client.dll"         "$GAME_BIN/"
-    cp "$BUILD/uplay_r1_loader64.dll"    "$GAME_BIN/"
-    cp "$BUILD/uplay_aux_r164.dll"       "$GAME_BIN/"
-    cp "$BUILD/dbdata.dll"               "$GAME_BIN/"
 
-    cp "$PROTON_DIR/files/lib/wine/x86_64-windows/version.dll" "$GAME_BIN/version_real.dll"
+    # Proton's version.dll is the "real" one our proxy forwards to
+    [ ! -f "$GAME_BIN/version_real.dll" ] && \
+        cp "$PROTON_DIR/files/lib/wine/x86_64-windows/version.dll" "$GAME_BIN/version_real.dll"
 
     # Write redirect config (hooks read this to know where to send traffic)
     mkdir -p "$(dirname "$REDIRECT_CONF")"
@@ -35,7 +36,7 @@ prudp_port = 6570
 rest_port = 21000
 REDIR
 
-    echo "[fc5mp] Steam-mode DLLs installed (stubs + hooks, no crack)"
+    echo "[fc5mp] Steam-mode DLLs installed (version proxy + hooks; real Ubisoft DLLs kept)"
 }
 
 install_crack() {
@@ -69,7 +70,8 @@ uninstall_mod() {
     fi
 
     rm -f "$GAME_BIN/winmm.dll" "$GAME_BIN/0xZeOn.dll"
-    rm -f "$GAME_BIN/steam_api64.dll" "$GAME_BIN/steam_emu.ini" "$GAME_BIN/uplay_r1_loader.ini"
+    rm -f "$GAME_BIN/steam_emu.ini" "$GAME_BIN/uplay_r1_loader.ini"
+    # NOTE: never delete steam_api64.dll — the game needs it for UPC<->Steam auth
     rm -f "$GAME_BIN/version.dll" "$GAME_BIN/version_real.dll" "$GAME_BIN/fc5mp-client.dll"
     rm -f "$GAME_BIN/uplay_aux_r164.dll"
     rm -f "$GAME_BIN/uplay_stub.log" "$GAME_BIN/dbdata_stub.log" "$GAME_BIN/fc5mp-tls-trace.txt"
@@ -103,11 +105,10 @@ case "${1:-steam}" in
         cd "$GAME_BIN"
         WINEPREFIX="$WINEPREFIX" \
         WINEESYNC=1 WINEFSYNC=1 \
-        WINEDLLOVERRIDES="uplay_r1_loader64=n;uplay_aux_r164=n;dbdata=n;version=n" \
+        WINEDLLOVERRIDES="version=n,b" \
         "$WINE" FarCry5.exe "${@:2}"
         echo "[fc5mp] Game exited"
         collect_logs
-        uninstall_mod
         ;;
     crack)
         install_crack
@@ -151,11 +152,10 @@ case "${1:-steam}" in
         echo "[fc5mp] Launching via Wine..."
         WINEPREFIX="$WINEPREFIX" \
         WINEESYNC=1 WINEFSYNC=1 \
-        WINEDLLOVERRIDES="uplay_r1_loader64=n;uplay_aux_r164=n;dbdata=n;version=n" \
+        WINEDLLOVERRIDES="version=n,b" \
         "$WINE" FarCry5.exe "${@:2}" || true
         echo "[fc5mp] Game exited"
         collect_logs
-        uninstall_mod
         kill "$SERVER_PID" 2>/dev/null || true
         ;;
     *)
