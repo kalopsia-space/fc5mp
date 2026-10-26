@@ -1,0 +1,3 @@
+# Decoding PRUDP packets
+Most of the knowledge about the packet structure comes from the [Pretendo Developer Documentation](https://developer.pretendo.network/overview/prudp).
+Based on the captured packets and hints in the accompanying task, I determined that the Rendez-Vous packet fromat is being used. Decdoding the `type`, `source` and `destination` was straightforward. The flag `MULTI_ACK` remains questionable, as the value `0x200` provided in the documentation does not fit into a single byte, let alone 5 bits corresponding to flags.
